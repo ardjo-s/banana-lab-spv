@@ -1,8 +1,128 @@
-<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#ffdb3b"><title>Banana Lab • Le SPV expliqué simplement</title>
-<link rel="stylesheet" href="style.css">
-<header><strong><i>◉</i> BANANA LAB</strong><a href="#histoire">L’histoire ↓</a></header>
-<main><section class="hero"><div><p class="kicker">LE PETIT GUIDE DE LA FINANCE</p><h1>Un projet,<br>une <em>société.</em></h1><p class="intro">Un SPV, c’est une société créée pour une mission précise. Chez les Minions, la mission du jour est d’ouvrir un stand de bananes.</p><a class="cta" href="#histoire">Suivre les bananes <span>↓</span></a></div>
-<figure><div id="stage" role="img" aria-label="Trois Minions en salopette et lunettes sur une petite scène de cinéma"></div><figcaption>LES MINIONS <b>✦</b> ATELIER BANANE</figcaption></figure></section>
-<section id="histoire"><p class="kicker">L’HISTOIRE DU STAND</p><h2>À qui va l’argent<br>des bananes ?</h2><div class="cards"><article><small>AU DÉPART</small><h3>Les amis se cotisent.</h3><p>Kevin, Stuart et Bob mettent chacun 10 € dans une nouvelle société. Avec ses 30 €, elle achète un panier et des bananes.</p></article><article><small>AU MARCHÉ</small><h3>Le stand vend.</h3><p>Bob encaisse 2 € pour la première banane. Ces 2 € appartiennent à la société du stand. Elle les garde pour ses dépenses.</p></article><article><small>À LA FIN</small><h3>On fait les comptes.</h3><p>La société paie ses factures. Les amis voient ce que le stand a gagné ou perdu. Si les ventes vont mal, ils peuvent perdre leur mise.</p></article></div></section>
-<section class="quiz"><small>À TOI DE JOUER</small><h2>Qui paie le prochain panier ?</h2><button data-answer="oui">La société du stand</button> <button data-answer="non">Bob, avec son argent de poche</button><p id="feedback" aria-live="polite"></p></section>
-<footer><p><strong>SPV</strong> signifie <i>Special Purpose Vehicle</i>. Dans cet exemple, on dit « société de projet ».</p><a href="https://ppp.worldbank.org/financing/project-finance-concepts">Comprendre le financement de projet · Banque mondiale ↗</a></footer></main><script src="three.min.js" defer></script><script src="scene.js" defer></script></html>
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#131b16">
+  <meta name="description" content="Suis les bananes des Minions et découvre pourquoi on crée une société pour un seul projet.">
+  <title>À quoi sert un SPV ? | La tournée des bananes</title>
+  <link rel="preload" as="image" href="assets/minions.webp">
+  <link rel="stylesheet" href="style.css?v=2">
+  <script src="app.js" defer></script>
+  <script src="scene.js?v=2" defer></script>
+</head>
+<body>
+  <a class="skip" href="#contenu">Aller au contenu</a>
+  <header class="bar">
+    <a class="wordmark" href="./"><span aria-hidden="true">✳</span> La tournée des bananes</a>
+    <nav aria-label="Sommaire">
+      <a href="#trajet">Le trajet</a>
+      <a href="#interet">Les intérêts</a>
+      <a href="#limites">Les limites</a>
+    </nav>
+  </header>
+  <main id="contenu">
+    <section class="hero" aria-labelledby="titre">
+      <img class="hero-image" src="assets/minions.webp" fetchpriority="high" width="3550" height="1920" alt="Bob, Kevin et Stuart emmitouflés dans le film Minions.">
+      <a class="credit" href="https://www.illumination.com/movie/minions/">Image du film <i>Minions</i> © Universal Studios</a>
+      <div class="hero-copy">
+        <p class="eyebrow">SPV · SPECIAL PURPOSE VEHICLE</p>
+        <h1 id="titre">Un projet.<br><em>Sa propre société.</em></h1>
+        <p>Les Minions ouvrent un stand de bananes. Ils lui créent une société à part pour qu’elle possède le stock, signe les contrats et encaisse les ventes du stand. Cette société dédiée, c’est le <b>SPV</b>.</p>
+        <a class="primary" href="#trajet">Suivre les bananes <span aria-hidden="true">↓</span></a>
+      </div>
+    </section>
+
+    <section id="trajet" class="section journey wrap" aria-labelledby="trajet-titre">
+      <div class="section-head">
+        <h2 id="trajet-titre">De la caisse<br>au client.</h2>
+        <p>Avance étape par étape. Regarde à qui appartiennent les bananes et où va l’argent.</p>
+      </div>
+      <div class="tour">
+        <div class="tour-controls" aria-label="Étapes du trajet">
+          <button type="button" data-step="0" aria-pressed="true"><small>01</small> Le départ</button>
+          <button type="button" data-step="1" aria-pressed="false"><small>02</small> L’achat</button>
+          <button type="button" data-step="2" aria-pressed="false"><small>03</small> Le marché</button>
+          <button type="button" data-step="3" aria-pressed="false"><small>04</small> La vente</button>
+        </div>
+        <div class="tour-body">
+          <div id="stage" role="img" aria-label="Maquette 3D du trajet des bananes entre le fournisseur, la réserve du SPV, le stand et le client.">
+            <div class="stage-fallback" aria-hidden="true">Fournisseur <span>→</span> Réserve du SPV <span>→</span> Stand <span>→</span> Client</div>
+            <span class="route-note" aria-hidden="true">Banane → &nbsp; Paiement ←</span>
+            <span class="pin" data-pin="0" aria-hidden="true">Fournisseur</span>
+            <span class="pin" data-pin="1" aria-hidden="true">Réserve du SPV</span>
+            <span class="pin" data-pin="2" aria-hidden="true">Stand</span>
+            <span class="pin" data-pin="3" aria-hidden="true">Client</span>
+          </div>
+          <div id="step-copy" class="step-copy" aria-live="polite">
+            <p class="eyebrow" id="step-kicker">01 / LES APPORTS</p>
+            <h3 id="step-title">Les Minions lancent le stand.</h3>
+            <p id="step-text">Ils mettent 30 € dans leur nouvelle société. En échange, ils en possèdent des parts. Le SPV a sa propre caisse et signe les contrats du stand.</p>
+            <div class="balance"><span>Dans la caisse du SPV</span><strong id="step-balance">30 €</strong></div>
+          </div>
+        </div>
+        <div class="tour-bottom">
+          <p>10 bananes · 2 € la banane</p>
+          <button class="play" type="button" aria-pressed="false"><span aria-hidden="true">▶</span> Lire le trajet</button>
+        </div>
+      </div>
+      <noscript><p>Le SPV paie 12 € au fournisseur pour dix bananes et 4 € pour le stand. Le stand vend les dix bananes à 2 € chacune. La société reçoit les 20 € de ventes.</p></noscript>
+    </section>
+
+    <section id="interet" class="purpose section">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Pourquoi créer<br>une société à part ?</h2>
+          <p>Imagine que les Minions tiennent aussi un atelier de vélos. Avec un SPV pour le stand, on peut suivre le projet de bananes sans mélanger les deux activités.</p>
+        </div>
+        <div class="benefits">
+          <article><span aria-hidden="true">◎</span><h3>Voir clair dans les comptes</h3><p>Les bananes, les factures et les ventes sont au nom du SPV. On voit ce que le stand gagne ou perd.</p></article>
+          <article><span aria-hidden="true">＋</span><h3>Financer un seul projet</h3><p>Bob peut prendre des parts dans la société du stand. Il investit ainsi dans les bananes, tandis que l’atelier de vélos garde ses propres associés.</p></article>
+          <article><span aria-hidden="true">▣</span><h3>Savoir qui doit quoi</h3><p>Quand le SPV signe la commande, c’est lui qui doit payer le fournisseur. Les contrats et les garanties précisent qui peut être appelé à payer en cas de problème.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="limites" class="section wrap limits">
+      <div class="section-head">
+        <h2>Et si les bananes<br>se vendent mal ?</h2>
+        <p>Change le nombre de bananes vendues. Le stand a dépensé 16 €, même si une partie du stock finit invendable.</p>
+      </div>
+      <div class="experiment">
+        <div class="experiment-copy">
+          <h3>Une journée au marché</h3>
+          <div class="choice" aria-label="Nombre de bananes vendues">
+            <button type="button" data-sales="10" aria-pressed="true">10 vendues</button>
+            <button type="button" data-sales="3" aria-pressed="false">3 vendues</button>
+          </div>
+          <p id="outcome" aria-live="polite">Les ventes couvrent les dépenses. Il reste 4 € de bénéfice dans le SPV, avant impôts.</p>
+        </div>
+        <dl class="figures">
+          <div><dt>Ventes</dt><dd id="revenue">20 €</dd></div>
+          <div><dt>Bananes et stand</dt><dd>−16 €</dd></div>
+          <div class="total"><dt>Résultat</dt><dd id="profit">+4 €</dd></div>
+        </dl>
+      </div>
+      <div class="caveats">
+        <article><h3>Le projet peut perdre de l’argent.</h3><p>Les associés peuvent perdre leur mise. Si Kevin promet personnellement de rembourser un prêt du SPV, le prêteur peut lui réclamer de l’argent selon cette garantie.</p></article>
+        <article><h3>Une société demande du travail.</h3><p>Il faut la créer, tenir ses comptes et la gérer. Pour un stand ouvert un seul après-midi, ces démarches peuvent coûter plus qu’elles ne rapportent.</p></article>
+      </div>
+    </section>
+
+    <section class="real">
+      <div class="wrap real-inner">
+        <div><p class="eyebrow">DANS LA VRAIE VIE</p><h2>Un parc solaire.</h2></div>
+        <div><p>Des partenaires peuvent créer une société pour construire et exploiter un parc précis. Elle signe les contrats, emprunte pour payer les travaux et vend l’électricité. Ses recettes servent notamment à rembourser son prêt.</p>
+        <p>La société permet aux partenaires et à la banque de suivre ce projet et d’organiser son financement. Si la production est inférieure aux prévisions, le risque reste réel.</p>
+        <a href="https://ppp.worldbank.org/financing/project-finance-concepts">Le financement de projet selon la Banque mondiale ↗</a></div>
+      </div>
+    </section>
+  </main>
+  <section class="wrap recall" aria-labelledby="recall-title">
+    <h3 id="recall-title">À toi de jouer</h3>
+    <p>Le parc solaire paie une facture de réparation. Qui la doit quand le contrat est signé au nom de la société du parc ?</p>
+    <details><summary>Voir la réponse</summary><p>La société du parc. Elle a signé le contrat pour son propre projet et paie la facture avec sa caisse.</p></details>
+  </section>
+  <footer class="wrap foot"><span>La tournée des bananes</span><a href="#contenu">Retour en haut ↑</a></footer>
+</body>
+</html>
