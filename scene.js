@@ -355,7 +355,12 @@ function createScene(stage) {
       : time <= 3 ? THREE.MathUtils.lerp(cargo.position.x, stall.x + .22, unload)
       : THREE.MathUtils.lerp(stall.x + .57, customer.x, walkToBuyer) - checkout * 1.30;
     const angle = .92 - .57 * delivery + .88 * walkToBuyer;
-    for (const { root } of actors) root.visible = Math.abs(root.position.x - focus) < camera.right + 1.25;
+    const zoom = 1 - .15 * checkout;
+    if (camera.zoom !== zoom) {
+      camera.zoom = zoom;
+      camera.updateProjectionMatrix();
+    }
+    for (const { root } of actors) root.visible = Math.abs(root.position.x - focus) < camera.right / zoom + 1.25;
     camera.position.set(focus + angle, 4.45, 10.4);
     camera.lookAt(focus, 1.05, .51);
     camera.updateMatrixWorld();
