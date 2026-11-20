@@ -349,10 +349,11 @@ function createScene(stage) {
     }
     bananas.position.copy(fruitPosition);
 
+    const checkout = phase(time, 3.86, 4);
     const focus = time <= 1 ? source.x - .14
       : time <= 2 ? THREE.MathUtils.lerp(cargo.position.x, shelf.x, delivery * .06)
       : time <= 3 ? THREE.MathUtils.lerp(cargo.position.x, stall.x + .22, unload)
-      : THREE.MathUtils.lerp(stall.x + .57, customer.x, walkToBuyer);
+      : THREE.MathUtils.lerp(stall.x + .57, customer.x, walkToBuyer) - checkout * 1.30;
     const angle = .92 - .57 * delivery + .88 * walkToBuyer;
     for (const { root } of actors) root.visible = Math.abs(root.position.x - focus) < camera.right + 1.25;
     camera.position.set(focus + angle, 4.45, 10.4);
