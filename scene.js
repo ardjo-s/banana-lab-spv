@@ -5,11 +5,16 @@
     const script = document.createElement('script');
     script.src = 'three.min.js';
     script.onload = () => {
-      try {
-        createScene(stage);
-      } catch (error) {
-        console.info('Trajet statique affiché.', error.message);
-      }
+      const characters = document.createElement('script');
+      characters.src = 'minions.js?v=3';
+      characters.onload = () => {
+        try {
+          createScene(stage);
+        } catch (error) {
+          console.info('Trajet statique affiché.', error.message);
+        }
+      };
+      document.head.append(characters);
     };
     document.head.append(script);
   }
@@ -27,7 +32,7 @@ function createScene(stage) {
   const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.25;
+  renderer.toneMappingExposure = 1.03;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   stage.prepend(renderer.domElement);
@@ -35,15 +40,16 @@ function createScene(stage) {
 
   const scene = new THREE.Scene();
   const camera = new THREE.OrthographicCamera();
-  camera.position.set(1.7, 10, 14);
-  camera.lookAt(0, .3, 0);
-  const sun = new THREE.DirectionalLight(0xffecd0, 2.6);
+
+  const sun = new THREE.DirectionalLight(0xffe5bf, 2.85);
   sun.position.set(-4, 9, 5);
   sun.castShadow = true;
   Object.assign(sun.shadow.camera, { left: -8, right: 8, top: 5, bottom: -6, far: 26 });
   sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.normalBias = .035;
-  scene.add(sun, new THREE.HemisphereLight(0xfffbf1, 0xa1b79c, 2.5));
+  const rim = new THREE.DirectionalLight(0xa9d5ff, 1.9);
+  rim.position.set(4, 5, -6);
+  scene.add(sun, rim, new THREE.HemisphereLight(0xfff8e5, 0xb1b8a1, 2.0));
 
   const material = (color, roughness = .64) => new THREE.MeshStandardMaterial({ color, roughness });
   const wood = material(0xb17639);
@@ -80,11 +86,11 @@ function createScene(stage) {
     new THREE.Vector3(5.14, 0, .28)
   ];
 
-  box(scene, board, 0, -.28, 0, 12.7, .5, 3.7);
+  box(scene, board, 0, -.28, .25, 13.6, .5, 4.6);
   // The middle of the route belongs to the project company.
-  const projectFloor = box(scene, material(0xc7cc9b), 0, -.032, 0, 6.17, .045, 3.57);
+  const projectFloor = box(scene, material(0xc7cc9b), 0, -.032, .25, 6.17, .045, 4.52);
   projectFloor.castShadow = false;
-  const lane = new THREE.CatmullRomCurve3(stops.map(point => new THREE.Vector3(point.x, -.012, point.z + .7)));
+  const lane = new THREE.CatmullRomCurve3(stops.map(point => new THREE.Vector3(point.x, -.012, point.z + 1.59)));
   for (let i = 0; i <= 40; i++) {
     const point = lane.getPoint(i / 40);
     box(scene, pathMaterial, point.x, .03, point.z, .15, .025, .065);
@@ -161,7 +167,7 @@ function createScene(stage) {
   for (let i = 0; i < 5; i++) {
     box(scene, darkWood, supplier.x, .075, -1.18 + i * .19, 2.25, .13, .15);
   }
-  const backCrate = crate(scene, supplier.x - .44, .15, -1.15);
+  const backCrate = crate(scene, supplier.x - .91, .15, -1.05);
   bunch(backCrate, 4, 0, .49, 0);
 
   // Open storage rack with two shelves.
@@ -203,53 +209,170 @@ function createScene(stage) {
   const bananas = bunch(scene, 5, 0, 0, 0);
   const coin = add(scene, new THREE.CylinderGeometry(.15, .15, .045, 28), gold, 0, 0, 0);
   add(coin, new THREE.TorusGeometry(.106, .012, 8, 24), stem, 0, .025, 0).rotation.x = Math.PI / 2;
-  const cratePositions = [
-    new THREE.Vector3(supplier.x + .2, .14, supplier.z + .45),
-    new THREE.Vector3(storage.x, .04, storage.z + .43),
-    new THREE.Vector3(stall.x + .15, .04, stall.z + .79)
-  ];
-  const fruitPositions = [
-    new THREE.Vector3(supplier.x + .2, .73, supplier.z + .45),
-    new THREE.Vector3(storage.x, .63, storage.z + .43),
-    new THREE.Vector3(stall.x + .15, 1.16, stall.z + .51),
-    new THREE.Vector3(customer.x, .98, customer.z - .46)
-  ];
-  const pinPositions = stops.map(point => new THREE.Vector3(point.x, .12, 1.52));
+  const actors = makeMinions(THREE);
+  actors.forEach(actor => scene.add(actor.root));
+
+  const at = (x, y, z) => new THREE.Vector3(x, y, z);
+  const source = at(supplier.x, .08, .71);
+  const shelf = at(storage.x, .05, .97);
+  const market = at(stall.x + .59, .04, 1.38);
+  const counter = at(stall.x + .61, 1.095, stall.z + .34);
+  const basket = at(customer.x, .89, customer.z - .46);
+  const grip = at(0, 0, 0);
+  const fruitPosition = at(0, 0, 0);
+  const pinPositions = stops.map(point => at(point.x, .045, 2.10));
   const pins = [...stage.querySelectorAll('.pin')];
-  const projection = new THREE.Vector3();
+  const projection = at(0, 0, 0);
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
-  let current = Number(stage.dataset.step || 0);
+  let current = Number(stage.dataset.step || 0) + 1;
   let origin = current;
   let target = current;
   let start = performance.now();
+  let duration = 1;
   let frame = 0;
   let visible = true;
 
-  function positionBetween(object, path, progress) {
-    const index = Math.min(path.length - 2, Math.floor(progress));
-    const local = Math.min(1, progress - index);
-    object.position.lerpVectors(path[index], path[index + 1], local);
-    return local;
+  function ease(value) {
+    const t = THREE.MathUtils.clamp(value, 0, 1);
+    return t * t * (3 - 2 * t);
+  }
+
+  function phase(value, first, last) {
+    return ease((value - first) / (last - first));
+  }
+
+  function moveCrate(from, to, time, finish, height, approach, stepAside) {
+    const walk = phase(time, .21, finish - .16);
+    const lift = phase(time, approach ? .14 : .04, .25) * (1 - phase(time, finish - .19, finish));
+    cargo.position.lerpVectors(from, to, walk);
+    cargo.position.y += lift * height;
+    cargo.rotation.set(lift * -.05, -.06 * lift, lift * .04);
+    const movement = Math.sin(walk * Math.PI) * 1.18;
+    const clear = stepAside ? phase(time, finish, .95) : 0;
+    const enter = approach ? 1 - phase(time, 0, .14) : 0;
+    actors[1].pose({
+      x: cargo.position.x + .06 + enter * .84 - clear * .82,
+      z: cargo.position.z - .69 + enter * .15 - clear * .27,
+      yaw: .18 + .67 * movement - enter * .49 - clear * .14,
+      stride: Math.min(1, movement),
+      gait: walk * 21,
+      lean: .19 + (1 - lift) * .41,
+      grip: grip.copy(cargo.position).add(at(0, .36, 0)),
+      spread: .45,
+      contact: (1 - enter) * (1 - clear),
+      look: .2,
+      blink: Math.max(0, 1 - Math.abs(time - .42) * 17)
+    });
+  }
+
+  function playScene(time) {
+    const loading = Math.min(time, 1);
+    const delivery = phase(time, 1, 2);
+    const unload = phase(time, 2.56, 3);
+    const walkToBuyer = phase(time, 3.22, 3.79);
+    const handoff = phase(time, 3.78, 3.91);
+    const stirring = Math.sin(loading * Math.PI);
+    coin.visible = false;
+    cargo.rotation.set(0, 0, 0);
+    cargo.position.copy(time < 2 ? source : market);
+    bananas.rotation.set(.09, -.16, .18);
+    fruitPosition.copy(source).add(at(0, .53, 0));
+
+    actors[0].pose({
+      x: source.x - .37,
+      z: source.z - .75,
+      yaw: .51,
+      lean: .17,
+      look: .42
+    });
+    actors[1].pose({
+      x: time <= 1 ? source.x + .90 : market.x - .76,
+      z: time <= 1 ? source.z - .54 : market.z - .96,
+      yaw: time <= 1 ? -.31 : .04,
+      look: -.31
+    });
+    actors[2].pose({ x: stall.x + 1.44, z: 1.08, yaw: -.74, look: -.55 });
+    actors[3].pose({ x: customer.x + .95, z: -.24, yaw: -.56, look: -.42 });
+
+    if (time <= 1) {
+      const reach = phase(loading, .1, .97);
+      fruitPosition.set(source.x - .40 * (1 - reach), .95 + stirring * .19 - reach * .34, source.z - .29 * (1 - reach));
+      actors[0].pose({
+        x: source.x - .37, z: source.z - .74, yaw: .48,
+        lean: .18 + reach * .50, grip: fruitPosition, spread: .28, look: .53,
+        blink: Math.max(0, 1 - Math.abs(loading - .27) * 12)
+      });
+    } else if (time <= 2) {
+      moveCrate(source, shelf, time - 1, 1, .45, true, false);
+      fruitPosition.copy(cargo.position).add(at(0, .53, 0));
+    } else if (time <= 3) {
+      moveCrate(shelf, market, time - 2, .59, .42, false, true);
+      fruitPosition.copy(cargo.position).add(at(0, .53, 0)).lerp(counter, unload);
+      fruitPosition.y += Math.sin(unload * Math.PI) * .29;
+      const reach = phase(time, 2.46, 2.60);
+      actors[2].pose({
+        x: stall.x + 1.44, z: 1.08 - unload * .46, yaw: -.74,
+        look: -.48, lean: .5 * reach * (1 - .59 * unload), grip: fruitPosition,
+        spread: .23, contact: reach
+      });
+    } else {
+      const carry = phase(time, 3.13, 3.29) * (1 - handoff);
+      fruitPosition.copy(counter).lerp(basket, walkToBuyer);
+      fruitPosition.z += Math.sin(walkToBuyer * Math.PI) * .37;
+      fruitPosition.y += carry * .24;
+      const receive = phase(time, 3.86, 4);
+      fruitPosition.x += receive * .31;
+      fruitPosition.y += receive * .13;
+      fruitPosition.z += receive * .22;
+      bananas.rotation.z += Math.sin(walkToBuyer * Math.PI * 5) * carry * .11;
+      actors[3].pose({
+        x: customer.x + .95, z: -.24, yaw: -.62, grip: fruitPosition,
+        spread: .24, contact: handoff, look: -.53, lean: handoff * .22
+      });
+      const bobX = THREE.MathUtils.lerp(stall.x + 1.44, customer.x - .82, walkToBuyer);
+      const bobZ = THREE.MathUtils.lerp(.64, basket.z - .62, walkToBuyer) + Math.sin(walkToBuyer * Math.PI) * .48;
+      actors[2].pose({
+        x: bobX, z: bobZ,
+        yaw: -.74 + phase(time, 3.12, 3.32) * 1.43 - handoff * .09,
+        lean: .18 + handoff * .14, grip: fruitPosition, spread: .24, contact: 1 - receive,
+        stride: Math.sin(walkToBuyer * Math.PI), gait: walkToBuyer * 15, look: .37,
+        blink: Math.max(0, 1 - Math.abs(time - 3.63) * 17)
+      });
+      const sale = phase(time, 3.77, 4);
+      coin.visible = sale > 0;
+      coin.position.set(
+        THREE.MathUtils.lerp(customer.x + .82, stall.x - .64, sale),
+        1.18 + Math.sin(sale * Math.PI) * 1.02,
+        THREE.MathUtils.lerp(basket.z, stall.z - .08, sale)
+      );
+      coin.rotation.set(.55 + sale * 15, 0, sale * 2.5);
+    }
+    bananas.position.copy(fruitPosition);
+
+    const focus = time <= 1 ? source.x - .14
+      : time <= 2 ? THREE.MathUtils.lerp(cargo.position.x, shelf.x, delivery * .06)
+      : time <= 3 ? THREE.MathUtils.lerp(cargo.position.x, stall.x + .22, unload)
+      : THREE.MathUtils.lerp(stall.x + .57, customer.x, walkToBuyer);
+    const angle = .92 - .57 * delivery + .88 * walkToBuyer;
+    for (const { root } of actors) root.visible = Math.abs(root.position.x - focus) < camera.right + 1.25;
+    camera.position.set(focus + angle, 4.45, 10.4);
+    camera.lookAt(focus, 1.05, .51);
+    camera.updateMatrixWorld();
   }
 
   function render(time) {
     frame = 0;
-    const duration = target === 3 ? 1650 : 1100;
-    const amount = motion.matches || origin === target ? 1 : Math.min(1, (time - start) / duration);
-    const movement = 1 - (1 - amount) ** 3;
-    current = THREE.MathUtils.lerp(origin, target, movement);
-    positionBetween(cargo, cratePositions, Math.min(current, 2));
-    const local = positionBetween(bananas, fruitPositions, current);
-    const toss = Math.sin(local * Math.PI);
-    bananas.position.y += current > 1 ? toss * .84 : toss * .07;
-    bananas.rotation.set(toss * .19, current * -.25, toss * -.56);
-
-    const sale = target === 3 ? Math.max(0, (amount - .32) / .68) : 0;
-    coin.visible = sale > 0;
-    coin.position.set(THREE.MathUtils.lerp(customer.x, stall.x - .64, sale), 1.22 + Math.sin(sale * Math.PI) * 1.05, stall.z - .08);
-    coin.rotation.set(.22, 0, Math.PI * (sale * 4 + .1));
+    const amount = motion.matches ? 1 : Math.min(1, (time - start) / duration);
+    current = THREE.MathUtils.lerp(origin, target, amount);
+    playScene(current);
     renderer.render(scene, camera);
-    if (visible && amount < 1) frame = requestAnimationFrame(render);
+    pins.forEach((pin, i) => {
+      projection.copy(pinPositions[i]).project(camera);
+      pin.hidden = projection.x < -.77 || projection.x > .77;
+      pin.style.left = ((1 + projection.x) * 50) + '%';
+      pin.style.top = ((1 - projection.y) * 50) + '%';
+    });
+    if (visible && !document.hidden && amount < 1) frame = requestAnimationFrame(render);
   }
 
   function redraw() {
@@ -260,43 +383,47 @@ function createScene(stage) {
   function resize() {
     const { clientWidth: width, clientHeight: height } = stage;
     const ratio = width / height;
-    const horizontal = 7.35;
-    const vertical = Math.max(3.15, horizontal / ratio);
+    const vertical = Math.max(1.82, 2.75 / ratio);
     Object.assign(camera, { left: -vertical * ratio, right: vertical * ratio, top: vertical, bottom: -vertical, near: .1, far: 50 });
     camera.updateProjectionMatrix();
-    camera.updateMatrixWorld();
     renderer.setSize(width, height, false);
-    pins.forEach((pin, i) => {
-      projection.copy(pinPositions[i]).project(camera);
-      pin.style.left = ((1 + projection.x) * 50) + '%';
-      pin.style.top = ((1 - projection.y) * 50) + '%';
-    });
     redraw();
   }
 
-  function highlight() {
-    pins.forEach((pin, i) => pin.classList.toggle('active', i === target));
-  }
-
-  stage.addEventListener('route-step', event => {
-    origin = current;
-    target = event.detail;
+  function play(index, replay = false) {
+    const bounds = stage.getBoundingClientRect();
+    visible = bounds.bottom > 0 && bounds.top < innerHeight;
+    const chapterEnd = index + 1;
+    origin = replay || current > chapterEnd || current < chapterEnd - 1 ? chapterEnd - 1 : current;
+    target = chapterEnd;
+    duration = index === 0 ? 1500 : 2450;
     start = performance.now();
-    highlight();
+    pins.forEach((pin, i) => pin.classList.toggle('active', i === index));
     redraw();
-  });
+  }
+
+  stage.addEventListener('route-step', event => play(event.detail, event.detail + 1 === target));
   new ResizeObserver(resize).observe(stage);
   new IntersectionObserver(([entry]) => {
+    const firstEntry = entry.isIntersecting && !stage.dataset.intro;
     visible = entry.isIntersecting;
+    if (firstEntry) {
+      stage.dataset.intro = 'true';
+      if (target === 1) play(0, true);
+    }
     redraw();
   }).observe(stage);
   motion.addEventListener('change', redraw);
-  renderer.domElement.addEventListener('webglcontextlost', () => stage.classList.remove('ready'));
+  document.addEventListener('visibilitychange', redraw);
+  renderer.domElement.addEventListener('webglcontextlost', event => {
+    event.preventDefault();
+    stage.classList.remove('ready');
+  });
   renderer.domElement.addEventListener('webglcontextrestored', () => {
     resize();
     stage.classList.add('ready');
   });
+  pins.forEach((pin, i) => pin.classList.toggle('active', i + 1 === target));
   resize();
-  highlight();
   stage.classList.add('ready');
 }

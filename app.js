@@ -2,25 +2,25 @@ const steps = [
   {
     kicker: '01 / LES APPORTS',
     title: 'Les Minions lancent le stand.',
-    text: 'Ils mettent 30 € dans leur nouvelle société. En échange, ils en possèdent des parts. Le SPV a sa propre caisse et signe les contrats du stand.',
+    text: 'Kevin prépare la caisse de bananes. Pour lancer le stand, les trois Minions apportent 30 € à leur nouvelle société. En échange, ils en possèdent des parts.',
     balance: 30
   },
   {
     kicker: '02 / LA COMMANDE',
     title: 'Le SPV achète les bananes.',
-    text: 'La société paie 12 € au fournisseur pour dix bananes. La caisse est livrée à sa réserve. Les bananes appartiennent désormais à la société du stand.',
+    text: 'La société paie 12 € au fournisseur pour dix bananes. Stuart porte la caisse jusqu’à la réserve. Le stock appartient désormais à la société du stand.',
     balance: 18
   },
   {
     kicker: '03 / LES FRAIS',
     title: 'Les bananes arrivent au marché.',
-    text: 'La société paie 4 € pour la place au marché. Bob prend les bananes dans la réserve et les installe au stand.',
+    text: 'La société paie 4 € pour la place au marché. Stuart apporte la caisse et Bob dispose les bananes sur le comptoir.',
     balance: 14
   },
   {
     kicker: '04 / LA RECETTE',
     title: 'Les clients paient le stand.',
-    text: 'Dix bananes vendues à 2 € rapportent 20 € à la société. Elle a 34 € en caisse, dont 4 € de plus que sa mise de départ.',
+    text: 'Bob remet les bananes au client. Dix bananes à 2 € rapportent 20 € à la société. Elle a 34 € en caisse, soit 4 € de plus qu’au départ.',
     balance: 34
   }
 ];
@@ -72,9 +72,9 @@ playButton.addEventListener('click', () => {
     return;
   }
   setPlaying(true);
-  if (currentStep === steps.length - 1) {
+  if (currentStep === steps.length - 1 || currentStep === 0) {
     showStep(0);
-    timer = setTimeout(advance, 2200);
+    timer = setTimeout(advance, 2600);
   } else {
     advance();
   }
