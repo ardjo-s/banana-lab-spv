@@ -28,6 +28,49 @@ function makeMinions(THREE) {
     return bitmap;
   }
 
+  const pores = paintedSurface(256, 256, (ctx, random) => {
+    const pixels = ctx.createImageData(256, 256);
+    for (let n = 0; n < pixels.data.length; n += 4) {
+      const tone = 155 + 90 * random();
+      pixels.data.set([tone, tone, tone, 255], n);
+    }
+    ctx.putImageData(pixels, 0, 0);
+  });
+  pores.repeat.set(3, 2);
+  skin.bumpMap = pores;
+  skin.bumpScale = .0026;
+  skin.roughnessMap = pores;
+  skin.roughness = .64;
+  rubber.bumpMap = pores;
+  rubber.bumpScale = .0018;
+
+  const irisMaterials = new Map();
+  function irisSurface(color) {
+    if (irisMaterials.has(color)) return irisMaterials.get(color);
+    const map = paintedSurface(192, 192, (ctx, random) => {
+      ctx.fillStyle = '#' + color.toString(16).padStart(6, '0');
+      ctx.fillRect(0, 0, 192, 192);
+      for (let i = 0; i < 780; i++) {
+        const a = random() * Math.PI * 2;
+        const r = 30 + random() * 42;
+        const end = r + random() * (92 - r);
+        ctx.strokeStyle = random() < .48 ? '#38230c80' : '#ffe7a87a';
+        ctx.lineWidth = .5 + random() * 1.2;
+        ctx.beginPath();
+        ctx.moveTo(96 + Math.cos(a) * r, 96 + Math.sin(a) * r);
+        ctx.lineTo(96 + Math.cos(a + .04) * end, 96 + Math.sin(a + .04) * end);
+        ctx.stroke();
+      }
+      const shade = ctx.createRadialGradient(96, 96, 60, 96, 96, 96);
+      shade.addColorStop(0, 'transparent');
+      shade.addColorStop(1, '#251f17');
+      ctx.fillStyle = shade;
+      ctx.fillRect(0, 0, 192, 192);
+    });
+    const surface = new THREE.MeshPhysicalMaterial({ map, roughness: .3, clearcoat: .9 });
+    irisMaterials.set(color, surface);
+    return surface;
+  }
   const weave = texture(128, 128, (ctx, w, h) => {
     ctx.fillStyle = '#315980';
     ctx.fillRect(0, 0, w, h);
@@ -41,7 +84,7 @@ function makeMinions(THREE) {
   });
   weave.wrapS = weave.wrapT = THREE.RepeatWrapping;
   weave.repeat.set(2, 2);
-  const denim = new THREE.MeshStandardMaterial({ color: 0xc8dcf3, map: weave, roughness: .84 });
+  const denim = new THREE.MeshPhysicalMaterial({ color: 0xc8dcf3, map: weave, bumpMap: weave, bumpScale: .006, roughness: .82, sheen: .42, sheenColor: 0x88aaca });
   const seam = paint(0x416587);
   const thread = paint(0xc9a476);
 
@@ -84,6 +127,33 @@ function makeMinions(THREE) {
     return attach(parent, new THREE.TubeGeometry(line, segments, radius, 7, false), surface, 0, 0, 0);
   }
 
+  function strap(parent, points, width) {
+    const curve = new THREE.CatmullRomCurve3(points);
+    const vertices = [], uv = [], indices = [];
+    for (let i = 0; i <= 20; i++) {
+      const t = i / 20;
+      const at = curve.getPoint(t);
+      const across = curve.getTangent(t).cross(vector(at.x, 0, at.z).normalize()).normalize();
+      for (const edge of [-1, 1]) {
+        const point = at.clone().addScaledVector(across, edge * width / 2);
+        vertices.push(point.x, point.y, point.z);
+        uv.push((edge + 1) / 2, t);
+      }
+      if (i < 20) {
+        const n = i * 2;
+        indices.push(n, n + 1, n + 2, n + 1, n + 3, n + 2);
+      }
+    }
+    const fabric = new THREE.BufferGeometry();
+    fabric.setIndex(indices);
+    fabric.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    fabric.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    fabric.computeVertexNormals();
+    const lining = denim.clone();
+    lining.side = THREE.DoubleSide;
+    attach(parent, fabric, lining, 0, 0, 0);
+  }
+
   function rounded(parent, surface, width, height, corner, depth, x, y, z) {
     const s = new THREE.Shape();
     const left = -width / 2, bottom = -height / 2, right = width / 2, top = height / 2;
@@ -116,9 +186,11 @@ function makeMinions(THREE) {
     const glove = new THREE.Group();
     group.add(glove);
     oval(glove, rubber, 0, 0, -.023, .105, .103, .093);
+    const fingers = [];
     for (let finger = -1; finger <= 1; finger++) {
       const tip = oval(glove, boot, finger * .051, .05, .029, .036, .067, .039);
       tip.rotation.z = -finger * .15;
+      fingers.push(tip);
     }
     oval(glove, boot, side * -.076, -.021, .045, .042, .063, .04).rotation.z = side * .48;
     const bend = vector(0, 0, 0);
@@ -131,10 +203,16 @@ function makeMinions(THREE) {
         if (goal) wrist.lerp(goal, contact);
         bend.copy(shoulder).lerp(wrist, .5);
         bend.x += side * .12;
-        bend.y -= .09;
+        bend.y -= .09 + Math.max(0, .61 - shoulder.distanceTo(wrist)) * .38;
         segment(upper, shoulder, bend, .079);
         segment(lower, bend, wrist, .069);
         joint.position.copy(bend);
+        const squeeze = goal ? contact : 0;
+        fingers.forEach((tip, i) => {
+          tip.rotation.x = -.22 + squeeze * .88;
+          tip.rotation.z = (1 - i) * (.22 - squeeze * .14);
+          tip.position.z = .032 + squeeze * .028;
+        });
         glove.position.copy(wrist);
         glove.rotation.set(-.38 + contact * .5, -side * .26, side * (.14 - localZ * .27));
       }
@@ -162,10 +240,10 @@ function makeMinions(THREE) {
     rounded(torso, seam, .26, .14, .036, .018, 0, .88, radius * .85 + .059);
     path(torso, thread, [vector(-.108, .934, radius * .85 + .083), vector(0, .926, radius * .85 + .083), vector(.108, .934, radius * .85 + .083)], .009);
     for (const side of [-1, 1]) {
-      path(torso, denim, [
+      strap(torso, [
         vector(side * .30, .995, radius * .90), vector(side * (radius - .055), 1.14, radius * .49),
         vector(side * (radius - .019), 1.165, -.055), vector(side * .35, 1.01, -radius * .82)
-      ], .061);
+      ], .122);
       oval(torso, button, side * .29, .997, radius * .88 + .046, .053, .053, .026);
       path(torso, thread, [
         vector(side * radius * .67, .81, radius * .74), vector(side * radius * .83, .72, radius * .57),
@@ -195,12 +273,17 @@ function makeMinions(THREE) {
       pupil.position.set(0, 0, .171);
       eye.add(pupil);
       oval(pupil, paint(0x342721), 0, 0, 0, r * .45, r * .45, .024);
-      oval(pupil, paint(irisColors[i], .3), 0, 0, .018, r * .365, r * .365, .013);
+      attach(pupil, new THREE.CircleGeometry(r * .405, 52), irisSurface(irisColors[i]), 0, 0, .023);
       oval(pupil, paint(0x1b1717, .21), 0, 0, .029, r * .205, r * .205, .01);
       oval(pupil, enamel, -r * .14, r * .155, .04, .029, .024, .009);
-      const eyelid = oval(eye, skin, 0, 0, .185, r * .90, .001, .032);
-      eyelid.visible = false;
-      gaze.push({ pupil, eyelid, radius: r });
+      const lidSocket = new THREE.Group();
+      lidSocket.position.set(0, 0, .102);
+      lidSocket.scale.set(r * .94, r * .94, .134);
+      eye.add(lidSocket);
+      const eyelid = attach(lidSocket, new THREE.SphereGeometry(1, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), skin, 0, 0, 0);
+      eyelid.castShadow = false;
+      gaze.push({ pupil, eyelid });
+
     });
 
     const smileY = eyeY - (eyes === 1 ? .385 : .33);
@@ -210,19 +293,26 @@ function makeMinions(THREE) {
     smile.bezierCurveTo(.137, -.148, -.14, -.139, -.205, .039);
     const grin = attach(torso, new THREE.ShapeGeometry(smile, 18), mouth, 0, smileY, radius + .009);
     grin.castShadow = false;
-    for (const x of [-.093, -.032, .03, .091]) {
-      oval(torso, enamel, x, smileY - .009 + Math.abs(x) * .14, radius + .021, .035, .026, .014);
+    const teeth = new THREE.Group();
+    teeth.position.set(0, smileY, radius + .014);
+    torso.add(teeth);
+    for (const x of [-.098, -.033, .034, .10]) {
+      rounded(teeth, enamel, .048, .021, .008, .005, x, .001 + Math.abs(x) * .1, 0);
     }
 
     const scalp = base + radius * 2 + height;
     if (hairStyle !== 'none') {
-      for (let i = -2; i <= 2; i++) {
-        const x = i * .06;
-        path(torso, hair, [
-          vector(x, scalp - .015, -.015),
-          vector(x + i * .014, scalp + .12, -.044),
-          vector(x + i * .038 + (hairStyle === 'tuft' ? .11 : 0), scalp + .19 - Math.abs(i) * .017, -.13)
-        ], .014, 8);
+      const count = hairStyle === 'tall' ? 11 : 16;
+      for (let i = 0; i < count; i++) {
+        const side = i % 2 === 0 ? -1 : 1;
+        const t = i / (count - 1);
+        const z = (t - .5) * .25;
+        const points = hairStyle === 'tall'
+          ? [vector(side * .023, scalp - .024, z), vector(side * (.03 + .03 * t), scalp + .105, z - .025),
+             vector(side * (.063 + .081 * t), scalp + .178 - .065 * t, z - .074)]
+          : [vector(side * .014, scalp + .004, z), vector(side * .21, scalp - .033, z - .034),
+             vector(side * (.33 + t * .04), scalp - .14 - t * .052, z - .079)];
+        path(torso, hair, points, hairStyle === 'tall' ? .007 : .009, 12);
       }
     }
 
@@ -238,13 +328,14 @@ function makeMinions(THREE) {
     });
     const leftGoal = vector(0, 0, 0);
     const rightGoal = vector(0, 0, 0);
+    const reachGoal = vector(0, 0, 0);
 
-    function pose({ x, z, yaw = 0, stride = 0, gait = 0, lean = 0, grip = null, spread = .32, contact = 1, look = 0, blink = 0 }) {
+    function pose({ x, z, yaw = 0, stride = 0, gait = 0, lean = 0, grip = null, spread = .32, contact = 1, look = 0, blink = 0, tilt = 0, breath = 0, smile = 0, catchPoint = null, catchWeight = 1, elevation = 0 }) {
       const step = Math.sin(gait) * stride;
-      root.position.set(x, 0, z);
+      root.position.set(x, elevation, z);
       root.rotation.y = yaw;
-      torso.position.y = Math.abs(step) * .037 - lean * .15;
-      torso.rotation.set(lean * .28, 0, step * .04);
+      torso.position.y = Math.abs(step) * .048 - lean * .15 + breath * .016;
+      torso.rotation.set(lean * .28, step * -.052, step * .052 + tilt);
       feet.forEach((leg, index) => {
         const swing = index === 0 ? step : -step;
         leg.position.y = Math.max(0, swing) * .12;
@@ -262,15 +353,19 @@ function makeMinions(THREE) {
         torso.worldToLocal(leftGoal);
         torso.worldToLocal(rightGoal);
       }
-      arms[0].pose(radius, height * .19, grip ? leftGoal : null, lean, contact, step * .12);
-      arms[1].pose(radius, height * .19, grip ? rightGoal : null, lean, contact, step * .12);
-      for (const { pupil, eyelid, radius: irisRadius } of gaze) {
-        pupil.position.set(look * .047, -Math.max(0, lean) * .04, .171);
-        eyelid.visible = blink > .02;
-        eyelid.position.y = irisRadius * .68 * (1 - blink);
-        eyelid.scale.y = irisRadius * .92 * blink;
+      if (catchPoint) {
+        reachGoal.copy(catchPoint);
+        torso.worldToLocal(reachGoal);
+        rightGoal.lerp(reachGoal, catchWeight);
       }
-      grin.scale.y = 1 - lean * .17;
+      arms[0].pose(radius, height * .19, grip ? leftGoal : null, lean, contact, step * .12);
+      arms[1].pose(radius, height * .19, grip || catchPoint ? rightGoal : null, lean, catchPoint ? Math.max(catchWeight, contact) : contact, step * .12);
+      for (const { pupil, eyelid } of gaze) {
+        pupil.position.set(look * .059, -.012 - Math.max(0, lean) * .045, .171);
+        eyelid.rotation.x = -1.16 + blink * 2.68 + lean * .12;
+      }
+      grin.scale.y = 1 - lean * .24 + smile * .43;
+      grin.scale.x = 1 + smile * .09;
     }
     return { root, pose };
   }

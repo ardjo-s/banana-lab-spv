@@ -154,7 +154,7 @@ article h3 { margin-bottom: .55rem; }
   font-weight: 700;
 }
 #stage.ready[data-step="3"] .route-note { display: block; }
-#stage { background: radial-gradient(ellipse at 35% 14%, #eaf0da 0%, #b5c8aa 64%, #879f84 100%); }
+#stage { background: linear-gradient(#28413952, #28342b66), url("assets/depot.webp") center 58% / cover, #c6cebc; }
 #stage canvas { opacity: 0; }
 #stage.ready canvas { opacity: 1; }
 
@@ -167,7 +167,7 @@ article h3 { margin-bottom: .55rem; }
   place-items: center;
   overflow: hidden;
   z-index: -1;
-  background: radial-gradient(ellipse at 62% 39%, #93623c, #46372a 48%, var(--pine) 82%);
+  background: linear-gradient(0deg, #281c174d, #15252212 55%), url("assets/depot.webp") 52% 67% / cover no-repeat, #564331;
 }
 .hero::before { pointer-events: none; z-index: 0; background: linear-gradient(90deg, var(--pine) 23%, #131e17dc 33%, transparent 58%); }
 .hero-copy { position: relative; z-index: 1; }

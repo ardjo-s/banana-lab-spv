@@ -8,7 +8,7 @@
       document.head.append(script);
     });
   }
-  const models = loadScript('three.min.js').then(() => loadScript('minions.js?v=3'));
+  const models = loadScript('three.min.js').then(() => loadScript('minions.js?v=4'));
   models.then(() => createCover(document.querySelector('.hero-scene'))).catch(console.info);
   const stage = document.querySelector('#stage');
   const loader = new IntersectionObserver(([entry]) => {
@@ -30,6 +30,7 @@ function createScene(stage) {
   renderer.domElement.setAttribute('aria-hidden', 'true');
 
   const scene = new THREE.Scene();
+  scene.name = "Trajet";
   const camera = new THREE.OrthographicCamera();
 
   const sun = new THREE.DirectionalLight(0xffe5bf, 2.85);
@@ -38,20 +39,27 @@ function createScene(stage) {
   Object.assign(sun.shadow.camera, { left: -8, right: 8, top: 5, bottom: -6, far: 26 });
   sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.normalBias = .035;
-  const rim = new THREE.DirectionalLight(0xa9d5ff, 1.9);
+  const rim = new THREE.DirectionalLight(0xffcd89, 2.25);
   rim.position.set(4, 5, -6);
-  scene.add(sun, rim, new THREE.HemisphereLight(0xfff8e5, 0xb1b8a1, 2.0));
+  scene.add(sun, rim, new THREE.HemisphereLight(0xe2eef3, 0xb29979, 1.62));
 
   const material = (color, roughness = .64) => new THREE.MeshStandardMaterial({ color, roughness });
   const wood = material(0xb17639);
   const paleWood = material(0xddaa65);
   const darkWood = material(0x755032);
+  const grain = makeWoodGrain();
+  for (const surface of [wood, paleWood, darkWood]) {
+    surface.map = grain;
+    surface.bumpMap = grain;
+    surface.bumpScale = .009;
+  }
   const green = material(0x356b51);
   const cream = material(0xffecd0);
   const rust = material(0xc55428);
   const gold = material(0xffba2c, .32);
   const stem = material(0x705229);
-  const board = material(0x829875);
+  const board = material(0x88745a);
+  board.map = grain;
   const pathMaterial = material(0xf1e4ba);
   const unit = new THREE.BoxGeometry(1, 1, 1);
 
@@ -79,7 +87,7 @@ function createScene(stage) {
 
   box(scene, board, 0, -.28, .25, 13.6, .5, 4.6);
   // The middle of the route belongs to the project company.
-  const projectFloor = box(scene, material(0xc7cc9b), 0, -.032, .25, 6.17, .045, 4.52);
+  const projectFloor = box(scene, material(0xb4ad83), 0, -.032, .25, 6.17, .045, 4.52);
   projectFloor.castShadow = false;
   const lane = new THREE.CatmullRomCurve3(stops.map(point => new THREE.Vector3(point.x, -.012, point.z + 1.59)));
   for (let i = 0; i <= 40; i++) {
@@ -104,42 +112,7 @@ function createScene(stage) {
     return group;
   }
 
-  function bananaGeometry() {
-    const positions = [];
-    const colors = [];
-    const indices = [];
-    const length = 24;
-    const facets = 16;
-    const peel = new THREE.Color(0xffcb26);
-    const tip = new THREE.Color(0x64502a);
-    for (let ring = 0; ring <= length; ring++) {
-      const t = ring / length;
-      const theta = (t - .5) * 1.92;
-      const profile = Math.pow(Math.sin(Math.PI * t), .67);
-      const radius = .019 + profile * .099;
-      const color = peel.clone().lerp(tip, Math.max(0, 1 - Math.min(t, 1 - t) * 17));
-      for (let side = 0; side < facets; side++) {
-        const angle = side * Math.PI * 2 / facets;
-        const ridge = radius * (1 + .095 * Math.cos(angle * 5));
-        const curveRadius = .47 + ridge * Math.cos(angle);
-        positions.push(Math.sin(theta) * curveRadius, .47 - Math.cos(theta) * curveRadius, ridge * Math.sin(angle));
-        colors.push(color.r, color.g, color.b);
-        if (ring < length) {
-          const a = ring * facets + side;
-          const b = ring * facets + (side + 1) % facets;
-          indices.push(a, a + facets, b, b, a + facets, b + facets);
-        }
-      }
-    }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    geometry.setIndex(indices);
-    geometry.computeVertexNormals();
-    return geometry;
-  }
-
-  const peel = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .43, side: THREE.DoubleSide });
+  const peel = makeFruitSurface();
   const fruit = bananaGeometry();
 
   function bunch(parent, count, x, y, z) {
@@ -236,8 +209,8 @@ function createScene(stage) {
     const walk = phase(time, .21, finish - .16);
     const lift = phase(time, approach ? .14 : .04, .25) * (1 - phase(time, finish - .19, finish));
     cargo.position.lerpVectors(from, to, walk);
-    cargo.position.y += lift * height;
-    cargo.rotation.set(lift * -.05, -.06 * lift, lift * .04);
+    cargo.position.y += lift * (height + .032 * Math.sin(walk * 42));
+    cargo.rotation.set(lift * (-.04 + .035 * Math.sin(walk * 21)), -.06 * lift, lift * .033 * Math.cos(walk * 21));
     const movement = Math.sin(walk * Math.PI) * 1.18;
     const clear = stepAside ? phase(time, finish, .95) : 0;
     const enter = approach ? 1 - phase(time, 0, .14) : 0;
@@ -251,7 +224,7 @@ function createScene(stage) {
       grip: grip.copy(cargo.position).add(at(0, .36, 0)),
       spread: .45,
       contact: (1 - enter) * (1 - clear),
-      look: .2,
+      look: .2 + .46 * phase(time, .12, .3),
       blink: Math.max(0, 1 - Math.abs(time - .42) * 17)
     });
   }
