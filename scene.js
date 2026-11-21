@@ -1,29 +1,20 @@
 (() => {
-  const stage = document.querySelector('#stage');
-
-  function loadScene() {
-    const script = document.createElement('script');
-    script.src = 'three.min.js';
-    script.onload = () => {
-      const characters = document.createElement('script');
-      characters.src = 'minions.js?v=3';
-      characters.onload = () => {
-        try {
-          createScene(stage);
-        } catch (error) {
-          console.info('Trajet statique affiché.', error.message);
-        }
-      };
-      document.head.append(characters);
-    };
-    document.head.append(script);
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = src;
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.append(script);
+    });
   }
-
+  const models = loadScript('three.min.js').then(() => loadScript('minions.js?v=3'));
+  models.then(() => createCover(document.querySelector('.hero-scene'))).catch(console.info);
+  const stage = document.querySelector('#stage');
   const loader = new IntersectionObserver(([entry]) => {
-    if (entry.isIntersecting) {
-      loader.disconnect();
-      loadScene();
-    }
+    if (!entry.isIntersecting) return;
+    loader.disconnect();
+    models.then(() => createScene(stage)).catch(console.info);
   }, { rootMargin: '400px' });
   loader.observe(stage);
 })();

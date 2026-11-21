@@ -6,10 +6,10 @@
   <meta name="theme-color" content="#131b16">
   <meta name="description" content="Suis les bananes des Minions et découvre pourquoi on crée une société pour un seul projet.">
   <title>À quoi sert un SPV ? | La tournée des bananes</title>
-  <link rel="preload" as="image" href="assets/minions.webp">
-  <link rel="stylesheet" href="style.css?v=5">
+  <link rel="stylesheet" href="style.css?v=6">
   <script src="app.js?v=3" defer></script>
-  <script src="scene.js?v=5" defer></script>
+  <script src="cover.js?v=1" defer></script>
+  <script src="scene.js?v=6" defer></script>
 </head>
 <body>
   <a class="skip" href="#contenu">Aller au contenu</a>
@@ -23,8 +23,10 @@
   </header>
   <main id="contenu">
     <section class="hero" aria-labelledby="titre">
-      <img class="hero-image" src="assets/minions.webp" fetchpriority="high" width="3550" height="1920" alt="Bob, Kevin et Stuart emmitouflés dans le film Minions.">
-      <a class="credit" href="https://www.illumination.com/movie/minions/">Image du film <i>Minions</i> © Universal Studios</a>
+      <figure class="hero-scene" aria-label="Kevin et Bob chargent les bananes pendant que Stuart tient la caisse.">
+        <div class="hero-fallback">Les Minions préparent le stand.</div>
+        <button type="button" class="hero-motion" hidden>Mettre en pause</button>
+      </figure>
       <div class="hero-copy">
         <p class="eyebrow">SPV · SPECIAL PURPOSE VEHICLE</p>
         <h1 id="titre">Un projet.<br><em>Sa propre société.</em></h1>
