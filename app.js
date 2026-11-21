@@ -25,11 +25,50 @@ const steps = [
   }
 ];
 
-const stage = document.querySelector('#stage');
+const clips = [
+  ['depart', 'Kevin soulève un régime et le dépose dans la caisse du fournisseur.'],
+  ['achat', 'Stuart porte la caisse de bananes vers la réserve du SPV.'],
+  ['marche', 'Stuart apporte la caisse au stand et Bob dispose les bananes sur le comptoir.'],
+  ['vente', 'Bob donne les bananes au client et reçoit sa pièce en échange.']
+];
 const stepsButtons = [...document.querySelectorAll('[data-step]')];
+const cover = document.querySelector('#cover-film');
+const route = document.querySelector('#route-film');
+const coverButton = document.querySelector('.hero-motion');
+const clipButton = document.querySelector('.clip-motion');
 const playButton = document.querySelector('.play');
+const motion = matchMedia('(prefers-reduced-motion: reduce)');
+const visible = new Set();
+const wanted = new Map([[cover, !motion.matches], [route, !motion.matches]]);
 let currentStep = 0;
-let timer;
+let sequence = false;
+
+function labels() {
+  coverButton.textContent = cover.paused ? 'Lire la scène' : 'Mettre en pause';
+  clipButton.textContent = route.ended ? 'Revoir le plan' : route.paused ? 'Lire le plan' : 'Pause';
+  playButton.setAttribute('aria-pressed', String(sequence));
+  playButton.innerHTML = sequence
+    ? '<span aria-hidden="true">Ⅱ</span> Pause du trajet'
+    : '<span aria-hidden="true">▶</span> Lire le trajet';
+}
+
+function sync(video) {
+  if (!wanted.get(video) || document.hidden || !visible.has(video)) {
+    video.pause();
+    return;
+  }
+  if (!video.getAttribute('src')) {
+    video.src = video === cover ? 'assets/film/cover.mp4' : 'assets/film/' + clips[currentStep][0] + '.mp4';
+  }
+  const source = video.src;
+  video.play().catch(error => {
+    if (error.name !== 'AbortError' && video.src === source) {
+      wanted.set(video, false);
+      if (video === route) sequence = false;
+      labels();
+    }
+  });
+}
 
 function showStep(index) {
   currentStep = index;
@@ -38,51 +77,83 @@ function showStep(index) {
   document.querySelector('#step-title').textContent = step.title;
   document.querySelector('#step-text').textContent = step.text;
   document.querySelector('#step-balance').textContent = step.balance + ' €';
-  stepsButtons.forEach((button, i) => button.setAttribute('aria-pressed', i === index));
-  stage.dataset.step = index;
-  stage.dispatchEvent(new CustomEvent('route-step', { detail: index }));
+  stepsButtons.forEach((button, i) => button.setAttribute('aria-pressed', String(i === index)));
+  route.pause();
+  route.removeAttribute('src');
+  route.poster = 'assets/film/' + clips[index][0] + '.webp';
+  route.setAttribute('aria-label', clips[index][1]);
+  route.load();
+  wanted.set(route, sequence || !motion.matches);
+  sync(route);
+  labels();
 }
 
-function setPlaying(playing) {
-  clearTimeout(timer);
-  timer = undefined;
-  playButton.setAttribute('aria-pressed', playing);
-  playButton.innerHTML = playing
-    ? '<span aria-hidden="true">Ⅱ</span> Pause'
-    : '<span aria-hidden="true">▶</span> Lire le trajet';
+function revealRoute() {
+  const rect = route.getBoundingClientRect();
+  const visibleHeight = Math.min(rect.bottom, innerHeight) - Math.max(rect.top, 0);
+  if (visibleHeight < Math.min(rect.height, innerHeight) * .45) {
+    route.scrollIntoView({ block: 'center', behavior: motion.matches ? 'instant' : 'smooth' });
+  }
 }
 
+function toggleClip(video) {
+  if (video === route) sequence = false;
+  if (video.ended) video.currentTime = 0;
+  wanted.set(video, video.paused);
+  sync(video);
+  labels();
+}
+
+coverButton.addEventListener('click', () => toggleClip(cover));
+clipButton.addEventListener('click', () => toggleClip(route));
 stepsButtons.forEach((button, index) => button.addEventListener('click', () => {
-  setPlaying(false);
+  sequence = false;
   showStep(index);
+  revealRoute();
 }));
-
-function advance() {
-  if (currentStep === steps.length - 1) {
-    setPlaying(false);
-    return;
-  }
-  showStep(currentStep + 1);
-  timer = setTimeout(advance, 3600);
-}
-
 playButton.addEventListener('click', () => {
-  if (timer) {
-    setPlaying(false);
-    return;
-  }
-  setPlaying(true);
-  if (currentStep === steps.length - 1 || currentStep === 0) {
-    showStep(0);
-    timer = setTimeout(advance, 2600);
-  } else {
-    advance();
+  sequence = !sequence;
+  if (sequence) {
+    revealRoute();
+    if (currentStep === steps.length - 1 || route.ended) showStep(0);
+    wanted.set(route, true);
+  } else wanted.set(route, false);
+  sync(route);
+  labels();
+});
+route.addEventListener('ended', () => {
+  if (sequence && currentStep < clips.length - 1) showStep(currentStep + 1);
+  else {
+    sequence = false;
+    wanted.set(route, false);
+    labels();
   }
 });
-
+const observe = new IntersectionObserver(entries => {
+  for (const { target, isIntersecting } of entries) {
+    if (isIntersecting) visible.add(target);
+    else visible.delete(target);
+    sync(target);
+  }
+});
+for (const video of [cover, route]) {
+  observe.observe(video);
+  for (const event of ['play', 'pause', 'ended']) video.addEventListener(event, labels);
+}
+coverButton.hidden = clipButton.hidden = false;
+motion.addEventListener('change', () => {
+  sequence = false;
+  for (const video of [cover, route]) {
+    wanted.set(video, !motion.matches);
+    sync(video);
+  }
+  labels();
+});
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) setPlaying(false);
+  sync(cover);
+  sync(route);
 });
+labels();
 
 const salesButtons = [...document.querySelectorAll('[data-sales]')];
 salesButtons.forEach(button => button.addEventListener('click', () => {

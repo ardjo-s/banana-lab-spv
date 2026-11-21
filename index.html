@@ -6,11 +6,9 @@
   <meta name="theme-color" content="#131b16">
   <meta name="description" content="Suis les bananes des Minions et découvre pourquoi on crée une société pour un seul projet.">
   <title>À quoi sert un SPV ? | La tournée des bananes</title>
-  <link rel="stylesheet" href="style.css?v=7">
-  <script src="app.js?v=3" defer></script>
-  <script src="surfaces.js?v=1" defer></script>
-  <script src="cover.js?v=2" defer></script>
-  <script src="scene.js?v=7" defer></script>
+  <link rel="preload" as="image" href="assets/film/cover.webp" fetchpriority="high">
+  <link rel="stylesheet" href="style.css?v=film1">
+  <script src="app.js?v=film1" defer></script>
 </head>
 <body>
   <a class="skip" href="#contenu">Aller au contenu</a>
@@ -24,8 +22,8 @@
   </header>
   <main id="contenu">
     <section class="hero" aria-labelledby="titre">
-      <figure class="hero-scene" aria-label="Kevin et Bob chargent les bananes pendant que Stuart tient la caisse.">
-        <div class="hero-fallback">Les Minions préparent le stand.</div>
+      <figure class="hero-scene">
+        <video id="cover-film" aria-label="Kevin soulève un régime de bananes et le passe à Bob, qui le range dans une deuxième caisse." poster="assets/film/cover.webp" muted playsinline loop preload="metadata"></video>
         <button type="button" class="hero-motion" hidden>Mettre en pause</button>
       </figure>
       <div class="hero-copy">
@@ -49,13 +47,9 @@
           <button type="button" data-step="3" aria-pressed="false"><small>04</small> La vente</button>
         </div>
         <div class="tour-body">
-          <div id="stage" role="img" aria-label="Kevin charge les bananes, Stuart porte la caisse et Bob remet les bananes au client. Scène animée en 3D.">
-            <div class="stage-fallback" aria-hidden="true">Fournisseur <span>→</span> Réserve du SPV <span>→</span> Stand <span>→</span> Client</div>
-            <span class="route-note" aria-hidden="true">Banane → &nbsp; Paiement ←</span>
-            <span class="pin" data-pin="0" aria-hidden="true">Fournisseur</span>
-            <span class="pin" data-pin="1" aria-hidden="true">Réserve du SPV</span>
-            <span class="pin" data-pin="2" aria-hidden="true">Stand</span>
-            <span class="pin" data-pin="3" aria-hidden="true">Client</span>
+          <div id="stage">
+            <video id="route-film" aria-label="Kevin soulève un régime et le dépose dans la caisse du fournisseur." poster="assets/film/depart.webp" muted playsinline preload="none"></video>
+            <button class="clip-motion" type="button" hidden>Lire le plan</button>
           </div>
           <div id="step-copy" class="step-copy" aria-live="polite">
             <p class="eyebrow" id="step-kicker">01 / LES APPORTS</p>
