@@ -37,7 +37,7 @@ async function checkViewport(browser, width) {
   for (let index = 0; index < clips.length; index++) {
     await page.locator('[data-step="' + index + '"]').click();
     await waitForPlayback(page, '#route-film');
-    assert((await route.evaluate(video => video.currentSrc)).endsWith('/' + clips[index] + '.mp4'));
+    assert((await route.evaluate(video => new URL(video.currentSrc).pathname)).endsWith('/' + clips[index] + '.mp4'));
     assert.equal(await page.locator('#step-balance').innerText(), balances[index]);
   }
   await page.locator('.clip-motion').click();
@@ -67,12 +67,12 @@ async function checkViewport(browser, width) {
     for (const width of [1440, 390]) await checkViewport(browser, width);
     const page = await browser.newPage({ reducedMotion: 'reduce' });
     const movies = [];
-    page.on('request', request => { if (request.url().endsWith('.mp4')) movies.push(request.url()); });
+    page.on('request', request => { if (new URL(request.url()).pathname.endsWith('.mp4')) movies.push(request.url()); });
     await page.goto(url);
     await page.locator('.primary').click();
     for (let index = 0; index < clips.length; index++) {
       await page.locator('[data-step="' + index + '"]').click();
-      assert((await page.locator('#route-film').getAttribute('poster')).endsWith(clips[index] + '.webp'));
+      assert((await page.locator('#route-film').evaluate(video => new URL(video.poster).pathname)).endsWith(clips[index] + '.webp'));
     }
     assert.equal(movies.length, 0);
     await page.locator('.clip-motion').click();

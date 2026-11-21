@@ -1,6 +1,8 @@
 """Bake animation to PNG, encode H.264, then extract the stills used by the site."""
 
 import argparse
+import hashlib
+import shutil
 import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -17,7 +19,7 @@ args = cli.parse_intermixed_args()
 root = Path(__file__).resolve().parents[1]
 out = root / "assets" / "film"
 out.mkdir(parents=True, exist_ok=True)
-takes = {"cover": 100, "depart": 76, "achat": 76, "marche": 76, "vente": 76}
+takes = {"cover": 132, "depart": 76, "achat": 76, "marche": 76, "vente": 76}
 
 
 def finished_png(path):
@@ -34,7 +36,15 @@ if unknown := set(args.shots) - takes.keys():
 for shot in args.shots or takes:
     count = takes[shot]
     work = args.work.resolve()
-    frames = work / shot
+    samples, scale = ("14", "100") if shot == "cover" else ("12", "88")
+    plate = "market.webp" if shot in ("marche", "vente") else "depot.webp"
+    recipe = hashlib.sha256((root / "production" / "film.py").read_bytes())
+    recipe.update((root / "assets" / plate).read_bytes())
+    recipe.update(f"{shot}/{samples}/{scale}".encode())
+    # Resume only images rendered with this choreography, set and sampling.
+    take_root = work / "frames" / recipe.hexdigest()[:16]
+    frames = take_root / shot
+    scene_file = take_root / f"{shot}.blend"
     # Continue from the first incomplete image after an interrupted render.
     first = next(
         (
@@ -44,6 +54,8 @@ for shot in args.shots or takes:
         ),
         count + 1,
     )
+    if not scene_file.is_file():
+        first = 1
     if first <= count:
         subprocess.run(
             [
@@ -55,12 +67,12 @@ for shot in args.shots or takes:
                 str(root / "production" / "film.py"),
                 "--",
                 shot,
-                str(work),
+                str(take_root),
                 "--save",
                 "--samples",
-                "14" if shot == "cover" else "12",
+                samples,
                 "--scale",
-                "100" if shot == "cover" else "88",
+                scale,
                 "--start",
                 str(first),
             ],
@@ -115,6 +127,10 @@ for shot in args.shots or takes:
             ],
             check=True,
         )
+        with TemporaryDirectory(dir=work) as staging:
+            complete_scene = Path(staging) / scene_file.name
+            shutil.copyfile(scene_file, complete_scene)
+            complete_scene.replace(work / scene_file.name)
         for extension in ("webp", "mp4"):
             asset = tmp / f"{shot}.{extension}"
             asset.replace(out / asset.name)

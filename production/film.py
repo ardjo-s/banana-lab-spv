@@ -14,6 +14,7 @@ from pathlib import Path
 
 import bpy
 from mathutils import Vector
+from mathutils.bvhtree import BVHTree
 
 CLI = argparse.ArgumentParser()
 CLI.add_argument("shot", choices=["cover", "depart", "achat", "marche", "vente"])
@@ -54,7 +55,7 @@ sc.render.resolution_percentage = args.scale
 sc.render.fps = 24
 sc.render.use_motion_blur = True
 sc.render.motion_blur_shutter = 0.32
-sc.frame_end = 100 if args.shot == "cover" else 76
+sc.frame_end = 132 if args.shot == "cover" else 76
 sc.view_settings.view_transform = "AgX"
 sc.view_settings.look = "AgX - Medium High Contrast"
 sc.world = bpy.data.worlds.new("Lumière ambiante du plateau")
@@ -450,6 +451,197 @@ hazel = iris_material(
 )
 
 
+class PeelContact:
+    """Collision surface shared by the four hands in the transfer close-up."""
+
+    def __init__(self, bunch):
+        self.bunch = bunch
+        verts = []
+        faces = []
+        for fruit_mesh in bunch.children:
+            if fruit_mesh.type != "MESH":
+                continue
+            base = len(verts)
+            verts.extend(
+                fruit_mesh.matrix_basis @ v.co for v in fruit_mesh.data.vertices
+            )
+            faces.extend(
+                tuple(base + i for i in f.vertices) for f in fruit_mesh.data.polygons
+            )
+        self.skin = BVHTree.FromPolygons(verts, faces)
+
+    def wrap(self, points, hand_space, back, pad, amount, thumb):
+        if amount <= 0:
+            return
+        to_bunch = self.bunch.matrix_basis.inverted() @ hand_space
+        to_hand = to_bunch.inverted()
+        normal = V((0, 0, -1)) if thumb else V((0, 1 if back else -1, 0))
+        for i in range(1, len(points)):
+            pt = to_bunch @ points[i]
+            hit, _, _, _ = self.skin.ray_cast(pt + normal, -normal, 1.35)
+            if hit is None:
+                continue
+            clearance = (pt - hit).dot(normal)
+            # Keep open or distant hands independent of the fruit.
+            if -0.26 < clearance < 0.045:
+                pt += normal * (pad - clearance) * amount
+                points[i] = to_hand @ pt
+
+
+glove_leather = rubber.copy()
+glove_leather.name = "Cuir souple des gants"
+principled(glove_leather)["Roughness"].default_value = 0.59
+principled(glove_leather)["Specular IOR Level"].default_value = 0.34
+
+
+class Glove:
+    """Three padded fingers wrapping from below, with an opposed thumb."""
+
+    def __init__(self, parent, side):
+        self.root = linked("Main gantée", parent=parent)
+        self.side = side
+        sphere(
+            "Manchette",
+            (0, 0.064, -0.014),
+            (0.098, 0.067, 0.071),
+            glove_leather,
+            self.root,
+        )
+        self.palm = sphere(
+            "Paume", (0, 0, -0.003), (0.115, 0.100, 0.066), glove_leather, self.root
+        )
+        self.digits = []
+        for digit in range(3):
+            curve = tube(
+                ("Index", "Majeur", "Pouce")[digit],
+                [(0, 0, 0)] * 6,
+                (0.039, 0.041, 0.044)[digit],
+                glove_leather,
+                self.root,
+            )
+            tip = linked("Contact du doigt", parent=self.root)
+            for bp, radius in zip(
+                curve.data.splines[0].bezier_points,
+                [1.16, 1.07, 0.97, 0.83, 0.60, 0.09],
+            ):
+                bp.radius = radius
+            self.digits.append((curve, tip))
+
+    def pose(self, frame, squeeze, pressure, hand_space, surface, back):
+        for digit, (curve, tip) in enumerate(self.digits):
+            # The index lands first and the opposed thumb locks a little later.
+            curl = ease(
+                (squeeze - (0.00, 0.07, 0.14)[digit]) / (1 - (0.00, 0.07, 0.14)[digit])
+            )
+            if digit < 2:
+                side = (-1, 1)[digit] * self.side
+                origin = V((side * 0.048, -0.036, 0.004))
+                axis = V(
+                    (side * (0.33 - 0.12 * curl) - self.side * 0.24 * curl, -1, 0)
+                ).normalized()
+                angle = 0.01 + curl * 0.91
+                lengths = (0.077, 0.066, 0.044)
+                angles = (angle, angle + 0.16 + 1.00 * curl, angle + 0.32 + 2.12 * curl)
+            else:
+                origin = V((-self.side * 0.083, 0.030, 0.006))
+                axis = V((-self.side * 0.67, 0.74, 0))
+                angle = 0.27 + 0.70 * curl
+                lengths = (0.066, 0.052, 0.038)
+                angles = (angle, angle + 0.27 + 1.02 * curl, angle + 0.40 + 1.48 * curl)
+            pts = [origin]
+            for length, ang in zip(lengths, angles):
+                pts.append(pts[-1] + length * (axis * cos(ang) + V((0, 0, sin(ang)))))
+            if surface:
+                surface.wrap(
+                    pts,
+                    hand_space,
+                    back,
+                    0.030 if digit != 2 else 0.035,
+                    ease((squeeze - 0.05) / 0.73),
+                    digit == 2,
+                )
+            # A rounded, tapering cap continues the last joint without a separate ball.
+            distal = (pts[-1] - pts[-2]).normalized()
+            pad = pts[-1].copy()
+            pts.extend([pad + distal * 0.014, pad + distal * 0.027])
+            for bp, pos in zip(curve.data.splines[0].bezier_points, pts):
+                bp.co = pos
+                bp.keyframe_insert(data_path="co", frame=frame)
+            tip.location = pad
+            key(tip, "location", frame)
+        self.palm.scale.z = 0.066 - 0.009 * pressure
+        key(self.palm, "scale", frame)
+
+
+def make_mouth(body, radius_at, height):
+    # The lip, enamel and tongue all deform in the same mouth coordinates.
+    # This keeps the teeth inside the opening when the mouth becomes a tight slit.
+    coords = []
+    faces = []
+    materials = []
+
+    def patch(us, vs, mat, depth, rounded=False):
+        for j, v in enumerate(vs):
+            for i, u in enumerate(us):
+                x = u
+                if rounded:
+                    x += (
+                        (0.008 if i == 0 else -0.008 if i == len(us) - 1 else 0) * v * v
+                    )
+                coords.append((x, v, depth, mat))
+                if i and j:
+                    n = len(coords) - 1
+                    faces.append((n - len(us) - 1, n - len(us), n, n - 1))
+                    materials.append(mat)
+
+    grid = [i / 20 - 1 for i in range(41)]
+    patch(grid, [i / 8 for i in range(9)], 0, 0.014)
+    for tooth in range(5):
+        left = -0.65 + tooth * 0.26
+        patch(
+            [left, left + 0.028, left + 0.212, left + 0.246],
+            [0.011, 0.09, 0.245],
+            1,
+            0.020,
+            True,
+        )
+    patch([i * 0.065 - 0.52 for i in range(17)], [0.80, 0.88, 0.98], 2, 0.019)
+    patch(grid, [1, 1.05, 1.105], 3, 0.012)
+
+    def positions(shape):
+        points = []
+        width, corner, skew, opening = {
+            "repos": (0.175, 0.019, 0.012, 0.058),
+            "Effort": (0.205, -0.018, 0.037, 0.039),
+            "Surprise": (0.109, -0.006, -0.003, 0.154),
+            "Soulagement": (0.205, 0.045, -0.009, 0.086),
+        }[shape]
+        for u, v, depth, mat in coords:
+            x = width * u
+            arc = max(0, 1 - u * u)
+            if mat == 1 and shape == "Surprise":
+                v *= 0.31
+            top = height + corner * u * u + skew * u + 0.009 * arc
+            z = top - opening * arc**0.66 * v
+            y = -0.89 * math.sqrt(max(0.03, radius_at(z) ** 2 - x * x))
+            points.append((x, y - depth - 0.003 * sin(pi * min(1, v)), z))
+        return points
+
+    face = mesh("Bouche articulée", positions("repos"), faces, mouth, body)
+    for m in (white, tongue, skin):
+        face.data.materials.append(m)
+    for polygon, mat in zip(face.data.polygons, materials):
+        polygon.material_index = mat
+    face.shape_key_add(name="Repos")
+    keys = []
+    for name in ("Effort", "Surprise", "Soulagement"):
+        shape = face.shape_key_add(name=name)
+        for v, co in zip(shape.data, positions(name)):
+            v.co = co
+        keys.append(shape)
+    return keys
+
+
 class Actor:
     def __init__(self, name):
         self.name = name
@@ -484,7 +676,17 @@ class Actor:
             return (r * sin(a), -r * 0.89 * cos(a), z)
 
         levels = [bottom + (top - bottom) * i / 64 for i in range(65)]
-        shell("Corps · " + name, [(z, radius_at(z)) for z in levels], skin, body)
+        head = shell("Corps · " + name, [(z, radius_at(z)) for z in levels], skin, body)
+        head.shape_key_add(name="Repos")
+        self.cheek = head.shape_key_add(name="Pommettes")
+        for v in self.cheek.data:
+            x, y, z = v.co
+            if y < 0:
+                bulge = math.exp(
+                    -(((abs(x) - 0.27) / 0.14) ** 2) - ((z - eye_z + 0.30) / 0.131) ** 2
+                )
+                v.co.y -= 0.035 * bulge
+                v.co.z += 0.018 * bulge
         bibtop = min(
             bottom + radius + 0.4, eye_z - (0.47 if eyes == 1 else 0.38) - 0.18
         )
@@ -704,49 +906,12 @@ class Actor:
                     k = row * segments + (j + 1) % segments
                     faces.append((n, k, k + segments, n + segments))
             lid = mesh("Paupière supérieure", verts, faces, skin, socket)
-            self.eyes.append((gaze, lid))
-        # Curved mouth, rounded upper teeth and tongue follow the curvature of the face.
-        z = eye_z - (0.47 if eyes == 1 else 0.38)
-
-        def oral(x, dz, offset):
-            return (
-                x,
-                -0.89 * math.sqrt(max(0.03, radius_at(z + dz) ** 2 - x * x)) - offset,
-                z + dz,
-            )
-
-        previous = set(body.children)
-        w = 0.193 if name == "Kevin" else 0.177
-        verts = []
-        faces = []
-        for j in range(35):
-            u = j / 17 - 1
-            x = w * u
-            corner = 0.033 * u * u + 0.014 * u
-            for dz in [corner + 0.012 * (1 - u * u), corner - 0.116 * (1 - u * u)]:
-                verts.append(oral(x, dz, 0.012))
-            if j:
-                faces.append((2 * j - 2, 2 * j - 1, 2 * j + 1, 2 * j))
-        mesh("Sourire", verts, faces, mouth, body)
-        for i in range(5):
-            x = (i - 2) * 0.056
-            dz = 0.015 * (x / w) ** 2 - 0.012
-            tooth = box(
-                "Dent de lait",
-                oral(x, dz, 0.021),
-                (0.052, 0.026, 0.035),
-                white,
-                body,
-                0.010,
-            )
-            tooth.rotation_euler.z = x * 1.55
-        sphere("Langue", oral(0.02, -0.087, 0.015), (0.088, 0.012, 0.014), tongue, body)
-        features = set(body.children) - previous
-        self.expression = linked("Expression du sourire", parent=body)
-        self.expression.location.z = z
-        for part in features:
-            part.parent = self.expression
-            part.location.z -= z
+            lower = linked("Paupière inférieure", lid.data, socket)
+            lower.scale.z = -1
+            self.eyes.append((eye, gaze, lid, lower, r))
+        self.mouth_shapes = make_mouth(
+            body, radius_at, eye_z - (0.47 if eyes == 1 else 0.38)
+        )
         if name != "Bob":
             for j in range(21 if name == "Stuart" else 13):
                 t = j / (20 if name == "Stuart" else 12)
@@ -776,25 +941,7 @@ class Actor:
                 skin,
                 body,
             )
-            glove = linked("Main gantée", parent=body)
-            sphere("Manchette", (0, 0.034, 0.040), (0.095, 0.086, 0.091), rubber, glove)
-            sphere("Paume", (0, -0.015, -0.022), (0.11, 0.085, 0.106), rubber, glove)
-            for j in [-1, 1]:
-                finger = sphere(
-                    "Doigt",
-                    (j * 0.050, -0.071, -0.062),
-                    (0.047, 0.076, 0.069),
-                    rubber,
-                    glove,
-                )
-                finger.rotation_euler.x = 0.49
-            sphere(
-                "Pouce",
-                (-side * 0.083, -0.057, 0.013),
-                (0.046, 0.068, 0.051),
-                rubber,
-                glove,
-            )
+            glove = Glove(body, side)
             self.arms.append((side, arm, glove))
             foot = linked("Jambe", parent=self.root)
             foot.location.x = side * radius * 0.46
@@ -803,11 +950,35 @@ class Actor:
             sphere("Semelle", (0, -0.071, 0.067), (0.175, 0.215, 0.064), strap, foot)
             self.feet.append(foot)
 
-    def pose(self, frame, position, yaw, lean, targets, look, walk, blink, tilt=0):
+    def pose(
+        self,
+        frame,
+        position,
+        yaw,
+        lean,
+        targets,
+        walk,
+        blink,
+        tilt=0,
+        *,
+        grips=(0.75, 0.75),
+        focus,
+        effort=0.15,
+        surprise=0,
+        relief=0.15,
+        compression=0,
+        load=0,
+        surface=None,
+        fruit_hands=(-1, 1),
+        rear_hand=0,
+    ):
         self.root.location = position
         self.root.rotation_euler.z = yaw
         self.body.location.z = (
-            -lean * 0.12 + abs(sin(walk)) * 0.019 + 0.008 * sin(frame * 0.106)
+            -compression
+            - lean * 0.12
+            + abs(sin(walk)) * 0.019
+            + 0.008 * sin(frame * 0.106)
         )
         self.body.rotation_euler = (lean * 0.24, tilt, 0)
         for o, prop in [
@@ -819,7 +990,8 @@ class Actor:
             key(o, prop, frame)
         parent_matrix = self.root.matrix_basis @ self.body.matrix_basis
         inv = parent_matrix.inverted()
-        for (s, arm, glove), target in zip(self.arms, targets):
+        for (s, arm, hand), target, squeeze in zip(self.arms, targets, grips):
+            glove = hand.root
             start = V((s * self.r * 0.94, 0.015, self.shoulder))
             rest = V(
                 (
@@ -829,30 +1001,67 @@ class Actor:
                 )
             )
             wrist = rest if target is None else inv @ V(target)
-            bend = start.lerp(wrist, 0.49) + V((s * 0.12, 0.05, -0.14))
+            bend = start.lerp(wrist, 0.49) + V(
+                (s * (0.12 + 0.06 * load), 0.07, -0.13 - 0.13 * load)
+            )
             for bp, co in zip(arm.data.splines[0].bezier_points, [start, bend, wrist]):
                 bp.co = co
                 bp.keyframe_insert(data_path="co", frame=frame)
             glove.location = wrist
+            # The palm scoops up under the fruit and rolls outward on release.
             glove.rotation_euler = (
-                0.12 + (0.52 if target is not None else 0),
-                s * 0.13,
-                -s * 0.24,
+                -0.88 * (1 - squeeze) + 0.03 * squeeze,
+                -s * (0.37 - 0.30 * squeeze),
+                -s * 0.22 - yaw * squeeze,
             )
             key(glove, "location", frame)
             key(glove, "rotation_euler", frame)
-        for gaze, lid in self.eyes:
-            gaze.location.x = 0.037 * look[0]
-            gaze.location.z = 0.035 * look[1]
-            lid.rotation_euler.x = -0.97 + 2.44 * blink + 0.09 * lean
+            back = s == rear_hand
+            if back:
+                glove.rotation_euler.z += pi * squeeze
+                key(glove, "rotation_euler", frame)
+            hand.pose(
+                frame,
+                squeeze,
+                load * squeeze,
+                parent_matrix @ glove.matrix_basis,
+                surface if s in fruit_hands else None,
+                back,
+            )
+        for i, (eye, gaze, lid, lower, r) in enumerate(self.eyes):
+            target = (parent_matrix @ eye.matrix_basis).inverted() @ V(focus)
+            horizontal = math.tanh(1.1 * math.atan2(target.x, max(0.12, -target.y)))
+            vertical = math.tanh(
+                1.15 * math.atan2(target.z, max(0.20, math.hypot(target.x, target.y)))
+            )
+            dx = r * 0.44 * horizontal
+            dz = r * 0.45 * vertical
+            gaze.location = (
+                dx,
+                -0.096
+                - 0.139 * math.sqrt(max(0.32, 1 - (dx / r) ** 2 - (dz / r) ** 2))
+                + 0.008,
+                dz,
+            )
+            gaze.rotation_euler = (-vertical * 0.48, 0, horizontal * 0.48)
+            asymmetry = (-1 if i == 0 else 1) * (0.045 + 0.13 * effort)
+            lid.rotation_euler = (
+                -0.87 + 0.43 * effort - 0.38 * surprise + 0.16 * relief + 2.17 * blink,
+                asymmetry,
+                0,
+            )
+            lower.rotation_euler.x = (
+                1.21 - 0.36 * effort - 0.21 * relief + 0.15 * surprise - 0.40 * blink
+            )
             key(gaze, "location", frame)
+            key(gaze, "rotation_euler", frame)
             key(lid, "rotation_euler", frame)
-        self.expression.scale.z = (
-            0.80
-            + 0.22 * sin(frame * 0.061 + (1 if self.name == "Bob" else 0))
-            - 0.24 * lean
-        )
-        key(self.expression, "scale", frame)
+            key(lower, "rotation_euler", frame)
+        for shape, val in zip(self.mouth_shapes, (effort, surprise, relief)):
+            shape.value = val
+            key(shape, "value", frame)
+        self.cheek.value = min(1, 0.56 * effort + 0.89 * relief)
+        key(self.cheek, "value", frame)
         for s, leg in zip([-1, 1], self.feet):
             leg.location.y = s * 0.15 * sin(walk)
             leg.location.z = max(0, s * sin(walk)) * 0.097
@@ -1043,6 +1252,8 @@ else:
         )
 prop = fruit(None) if shot != "achat" else None
 
+fruit_surface = PeelContact(prop) if prop is not None else None
+
 camdata = bpy.data.cameras.new("Objectif cinéma")
 cam = linked("Caméra du plan", camdata)
 sc.camera = cam
@@ -1052,19 +1263,26 @@ camdata.dof.aperture_fstop = 1.45
 camdata.dof.aperture_blades = 9
 if cover:
     insert_data = camdata.copy()
-    insert_data.lens = 52
+    insert_data.lens = 48
     insert_data.dof.aperture_fstop = 2.8
     insert_cam = linked("Contrechamp · passage de main", insert_data)
+    reaction_data = camdata.copy()
+    reaction_data.lens = 47
+    reaction_data.dof.aperture_fstop = 3.0
+    reaction_cam = linked("Caméra · le poids sur Bob", reaction_data)
     for frame, camera, name in [
         (1, cam, "La levée"),
-        (37, insert_cam, "Le passage de main"),
-        (63, cam, "La réception"),
+        (45, insert_cam, "Le passage de main"),
+        (70, reaction_cam, "La réception"),
+        (94, cam, "La dépose"),
     ]:
         sc.timeline_markers.new(name, frame=frame).camera = camera
 
 
 def grip(p, side, spread=0.31):
-    return V(p) + V((side * spread, 0.025, 0.062))
+    x = side * spread
+    underneath = V((x, -0.165, 0.29 * (x / 0.42) ** 2 - 0.053))
+    return V(p) + prop.rotation_euler.to_matrix() @ underneath
 
 
 def reach(rest, target, strength):
@@ -1079,96 +1297,170 @@ def point(pos):
     return V(pos)
 
 
+def handoff_take(frame):
+    def beat(start, end):
+        return ease((frame - start) / (end - start))
+
+    # The bunch stays on the crate as Kevin closes his fingers and braces.
+    lift = beat(23, 41)
+    offer = beat(39, 61)
+    support = beat(62, 71)
+    catch = beat(69, 76)
+    recover = beat(76, 86)
+    lower = beat(91, 112)
+    touchdown = beat(112, 116)
+    p = V(
+        (
+            -0.97 + 0.24 * lift + 0.94 * offer - 0.09 * catch + 0.71 * lower,
+            -0.53 - 0.075 * offer + 0.073 * lower,
+            0.65
+            + 0.39 * lift
+            + 0.095 * sin(pi * offer)
+            - 0.18 * catch
+            + 0.095 * recover
+            - 0.34 * lower
+            - 0.022 * touchdown,
+        )
+    )
+    prop.location = p
+    prop.rotation_euler = (
+        0.06 + 0.095 * offer - 0.055 * lower,
+        -0.09
+        + 0.21 * sin(pi * lift)
+        - 0.055 * offer
+        + 0.255 * catch
+        - 0.17 * recover
+        + 0.05 * lower,
+        -0.15 + 0.26 * offer - 0.13 * lower,
+    )
+    bunch_rotation = prop.rotation_euler.to_matrix()
+
+    def underneath(x, y):
+        # Contact follows the curved underside of the moving fruit in its own space.
+        z = 0.29 * (x / 0.42) ** 2 - 0.048
+        return p + bunch_rotation @ V((x, y, z))
+
+    kx = -0.86 + 0.21 * offer - 0.08 * beat(76, 88)
+    bx = 0.92 - 0.15 * beat(43, 61) + 0.24 * beat(65, 79) - 0.09 * lower
+    kclose = (beat(5, 13) * (1 - beat(56, 64)), beat(8, 17) * (1 - beat(70, 78)))
+    bclose = (beat(51, 61) * (1 - beat(115, 122)), beat(57, 67) * (1 - beat(117, 124)))
+    ka = (beat(0, 9) * (1 - beat(62, 73)), beat(0, 11) * (1 - beat(76, 88)))
+    ba = (beat(39, 54) * (1 - beat(121, 130)), beat(45, 60) * (1 - beat(123, 132)))
+    kh = [
+        reach(
+            (kx + side * 0.60, -0.36, 0.79),
+            underneath(x, 0.105 if side == -1 else -0.177),
+            at,
+        )
+        for side, x, at in zip((-1, 1), (-0.30, -0.175), ka)
+    ]
+    bh = [
+        reach(
+            (bx + side * 0.57, -0.29, 0.66),
+            underneath(x, -0.17 if side == -1 else 0.115),
+            at,
+        )
+        for side, x, at in zip((-1, 1), (0.13, 0.29), ba)
+    ]
+    anticipation = beat(9, 22) * (1 - beat(24, 37))
+    freed = sin(pi * beat(72, 87))
+    kload = beat(12, 27) * (1 - support)
+    # Kevin checks Bob's face before he commits the weight, then watches the grip.
+    klook = mix(
+        p, (bx, -0.27, 1.44), beat(36, 40) * (1 - beat(52, 55)) + beat(102, 108)
+    )
+    lead.pose(
+        frame,
+        (kx, 0.115, 0),
+        0.12 + 0.55 * beat(36, 51) - 0.18 * beat(89, 108),
+        0.16 + 0.65 * anticipation + 0.22 * kload - 0.22 * freed,
+        kh,
+        0,
+        pulse(frame, 33, 2.5) + pulse(frame, 99, 3),
+        -0.08 * kload + 0.08 * freed,
+        grips=kclose,
+        focus=klook,
+        effort=0.07 + 0.77 * kload + 0.10 * anticipation,
+        relief=0.78 * beat(80, 97),
+        compression=0.14 * anticipation + 0.046 * kload - 0.035 * freed,
+        load=kload,
+        surface=fruit_surface,
+        rear_hand=-1,
+    )
+    # Bob looks at the landing spot a beat before his hands go under it.
+    blook = mix((kx, -0.32, 1.87), p, beat(30, 34) * (1 - beat(115, 119)))
+    bload = support * (1 - beat(109, 116))
+    alarm = beat(66, 70) * (1 - beat(79, 87))
+    dip = 0.235 * catch - 0.183 * recover + 0.095 * lower - 0.146 * beat(114, 125)
+    partner.pose(
+        frame,
+        (bx, 0.08, 0.12),
+        -0.50 - 0.13 * beat(37, 54) + 0.48 * beat(66, 77) - 0.08 * lower,
+        0.10
+        + 0.19 * offer
+        - 0.60 * catch
+        + 0.57 * recover
+        + 0.20 * lower
+        - 0.46 * beat(114, 126),
+        bh,
+        0,
+        pulse(frame, 24, 3) + pulse(frame, 104, 2.7),
+        -0.035 * offer + 0.131 * catch - 0.084 * recover,
+        grips=bclose,
+        focus=blook,
+        effort=0.12 + 0.48 * bload * (1 - alarm),
+        surprise=0.86 * alarm,
+        relief=0.74 * beat(114, 126),
+        compression=dip - 0.075 * beat(42, 55) * (1 - catch),
+        load=bload,
+        surface=fruit_surface,
+        rear_hand=1,
+    )
+    focus = V((0.025 + 0.06 * offer, -0.22, 1.29))
+    camera = V((0.36 + 0.18 * offer, -6.29 + 0.15 * offer, 1.96 - 0.10 * offer))
+    return focus, camera
+
+
 def animation(frame):
     t = (frame - 1) / (sc.frame_end - 1)
     blink = lambda c: pulse(t, c, 0.035)
     arc = sin(pi * t)
-    if shot in ("cover", "depart"):
+    if cover:
+        focus, camera = handoff_take(frame)
+    elif shot == "depart":
         up = ease(t / 0.32)
         handoff = ease((t - 0.26) / 0.42)
         down = ease((t - 0.66) / 0.31)
-        if shot == "depart":
-            last_stride = ease((t - 0.60) / 0.34)
-            x = -1.05 + 0.40 * up + 0.91 * handoff + 0.61 * last_stride
-            p = point(
-                (x, -0.63, 0.66 + 0.51 * up + 0.15 * sin(pi * handoff) - 0.55 * down)
-            )
-            lx = -0.81 + 0.86 * handoff + 0.61 * last_stride
-            rx = 1.0
-        else:
-            x = -0.99 + 0.33 * up + 1.06 * handoff + 0.30 * down
-            settle = sin(pi * ease((t - 0.54) / 0.17))
-            p = point(
-                (
-                    x,
-                    -0.59,
-                    0.66
-                    + 0.51 * up
-                    + 0.11 * sin(pi * handoff)
-                    - 0.51 * down
-                    - 0.035 * settle,
-                )
-            )
-            lx = -0.84 + 0.21 * handoff
-            rx = 0.89 - 0.18 * sin(pi * handoff)
+        last_stride = ease((t - 0.60) / 0.34)
+        x = -1.05 + 0.40 * up + 0.91 * handoff + 0.61 * last_stride
+        p = point((x, -0.63, 0.66 + 0.51 * up + 0.15 * sin(pi * handoff) - 0.55 * down))
+        lx = -0.81 + 0.86 * handoff + 0.61 * last_stride
         prop.location = p
         prop.rotation_euler = (
             0.12,
             0.18 * sin(pi * handoff) - 0.15 * down,
             -0.19 + 0.26 * handoff,
         )
-        a = 1 - ease((t - (0.52 if cover else 0.91)) / (0.16 if cover else 0.09))
-        pos = (lx, 0.10, 0)
-        h = [
-            reach(
-                (lx + s * 0.61, -0.39, 0.92),
-                grip(p, s),
-                a * (1 - ease((t - 0.35) / 0.20)) if cover and s == -1 else a,
-            )
-            for s in [-1, 1]
-        ]
+        a = 1 - ease((t - 0.91) / 0.09)
+        h = [reach((lx + s * 0.61, -0.39, 0.92), grip(p, s), a) for s in [-1, 1]]
         lead.pose(
             frame,
-            pos,
-            0.16 + (0.54 if cover else 0.32) * handoff,
-            0.36 * (1 - up) + 0.13 * arc + 0.20 * down
-            if not cover
-            else 0.37 * (1 - up) + 0.17 * arc,
+            (lx, 0.10, 0),
+            0.16 + 0.32 * handoff,
+            0.36 * (1 - up) + 0.13 * arc + 0.20 * down,
             h,
-            (0.82 * handoff, -0.66 + 0.51 * arc),
-            0 if cover else 2 * pi * (handoff + last_stride),
+            2 * pi * (handoff + last_stride),
             blink(0.24) + blink(0.87),
             -0.032 * arc,
+            grips=(a * ease(t / 0.095), a * ease(t / 0.12)),
+            focus=p,
+            effort=0.24 + 0.54 * sin(pi * up) + 0.18 * handoff * (1 - down),
+            relief=0.54 * down,
+            load=a * 0.62,
+            surface=fruit_surface,
         )
-        if cover:
-            b = ease((t - 0.31) / 0.22) * (1 - ease((t - 0.90) / 0.10))
-            bh = [
-                reach(
-                    (rx + s * 0.59, -0.35, 0.67),
-                    grip(p, s, 0.26),
-                    b * ease((t - 0.49) / 0.18) if s == 1 else b,
-                )
-                for s in [-1, 1]
-            ]
-            partner.pose(
-                frame,
-                (rx, 0.055, 0.12),
-                -0.52 + 0.28 * down,
-                0.20 + 0.25 * down + 0.16 * settle,
-                bh,
-                (-0.85 + 0.48 * down, -0.20 + 0.60 * arc),
-                0,
-                blink(0.57),
-                0.055 * sin(pi * handoff),
-            )
-        focus = point((0.00 if cover else lx + 0.10, -0.26, 1.32 if cover else 1.34))
-        camera = point(
-            (
-                0.28 + 0.28 * t if cover else -0.86 + 0.90 * t,
-                -6.26 if cover else -5.74,
-                1.88 + 0.13 * cos(pi * t),
-            )
-        )
+        focus = point((lx + 0.10, -0.26, 1.34))
+        camera = point((-0.86 + 0.90 * t, -5.74, 1.88 + 0.13 * cos(pi * t)))
     elif shot == "achat":
         move = ease(t)
         x = -1.30 + 2.30 * move
@@ -1184,10 +1476,17 @@ def animation(frame):
             0.73,
             0.20,
             [base + V((s * 0.47, s * 0.35, 0.25)) for s in [-1, 1]],
-            (0.84, -0.23 + 0.25 * arc),
             phase,
             blink(0.67),
             0.027 * sin(phase),
+            grips=(0.94, 0.96),
+            load=0.78,
+            effort=0.43 + 0.16 * abs(sin(phase)),
+            focus=mix(
+                base + V((0, -0.2, 0.38)),
+                (2.7, -1.4, 1.75),
+                0.27 + 0.70 * ease((t - 0.1) / 0.32),
+            ),
         )
         focus = point((x * 0.48 + 0.14, -0.05, 1.11))
         camera = point((x * 0.42 + 0.62, -5.65, 1.46 + 0.07 * arc))
@@ -1211,10 +1510,15 @@ def animation(frame):
             -0.38 + 0.36 * u,
             0.18 + 0.19 * lift,
             bh,
-            (-0.91 + 0.78 * u, -0.27),
             0,
             blink(0.55),
             -0.07 * lift,
+            grips=(b, b * ease(t / 0.21)),
+            focus=p,
+            effort=0.18 + 0.44 * lift,
+            relief=0.55 * u,
+            load=0.66 * b,
+            surface=fruit_surface,
         )
         partner.pose(
             frame,
@@ -1222,9 +1526,13 @@ def animation(frame):
             0.21,
             0.27,
             [origin + V((s * 0.55, 0.01, 0.15)) for s in [-1, 1]],
-            (0.72, -0.20),
             pi * 2 * approach,
             blink(0.33),
+            grips=(0.88, 0.95),
+            load=0.60,
+            focus=p,
+            effort=0.45 - 0.3 * u,
+            relief=0.45 * u,
         )
         focus = point((-0.03 + 0.17 * t, -0.18, 1.52))
         camera = point((-0.68 + 0.46 * t, -5.68, 1.85))
@@ -1268,10 +1576,15 @@ def animation(frame):
             0.28,
             0.17 + 0.23 * sin(pi * u),
             h,
-            (0.8, -0.15),
             0,
             blink(0.73),
             -0.035 * arc,
+            grips=(ease((t - 0.25) / 0.32), give),
+            surface=fruit_surface,
+            fruit_hands=(1,),
+            focus=mix(p, cp, ease((t - 0.45) / 0.12)),
+            effort=0.18 * give,
+            relief=0.72 * u,
         )
         partner.pose(
             frame,
@@ -1279,10 +1592,15 @@ def animation(frame):
             -0.35,
             0.12 + 0.25 * sin(pi * u),
             bh,
-            (-0.75, -0.3 + arc * 0.35),
             0,
             blink(0.3),
             0.03 * arc,
+            grips=(get, 1 - ease((t - 0.42) / 0.22)),
+            surface=fruit_surface,
+            fruit_hands=(-1,),
+            focus=mix(cp, p, ease((t - 0.18) / 0.11)),
+            effort=0.18 * get,
+            relief=0.55 * u,
         )
         focus = point((0.04 + 0.085 * t, -0.31, 1.48))
         camera = point((0.62 - 0.35 * t, -6.15, 1.65 + 0.06 * arc))
@@ -1290,13 +1608,27 @@ def animation(frame):
         key(prop, "location", frame)
         key(prop, "rotation_euler", frame)
     if cover:
-        target = prop.location + V((0.025, 0.03, 0.13))
-        insert_cam.location = V((-0.91 + 0.41 * t, -3.20, 1.70 + 0.07 * arc))
+        target = prop.location + V((0.03, 0.03, 0.235))
+        insert_cam.location = V((0.03 + 0.22 * t, -3.68, 1.74 + 0.07 * arc))
         orient(insert_cam, target)
         insert_data.dof.focus_distance = (target - insert_cam.location).length
         key(insert_cam, "location", frame)
         key(insert_cam, "rotation_euler", frame)
         insert_data.keyframe_insert(data_path="dof.focus_distance", frame=frame)
+        # Stay on the same side of the exchange. This angle separates Bob's face
+        # from the fruit and keeps both his eyes and the loaded wrists in shot.
+        body_z = partner.body.location.z
+        reaction_target = V(
+            (partner.root.location.x - 0.20, -0.16, 1.17 + 0.44 * body_z)
+        )
+        reaction_cam.location = V((0.36, -3.51, 1.88 + 0.23 * body_z))
+        orient(reaction_cam, reaction_target)
+        reaction_data.dof.focus_distance = (
+            reaction_target - reaction_cam.location
+        ).length
+        key(reaction_cam, "location", frame)
+        key(reaction_cam, "rotation_euler", frame)
+        reaction_data.keyframe_insert(data_path="dof.focus_distance", frame=frame)
     cam.location = camera
     orient(cam, focus)
     camdata.dof.focus_distance = (focus - camera).length
@@ -1305,7 +1637,7 @@ def animation(frame):
     camdata.keyframe_insert(data_path="dof.focus_distance", frame=frame)
 
 
-for fr in sorted(set(range(1, sc.frame_end + 1, 2)) | {sc.frame_end}):
+for fr in sorted(set(range(1, sc.frame_end + 1, 1 if cover else 2)) | {sc.frame_end}):
     animation(fr)
 args.out.mkdir(parents=True, exist_ok=True)
 sc.frame_set(1)

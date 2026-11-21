@@ -43,6 +43,10 @@ const wanted = new Map([[cover, !motion.matches], [route, !motion.matches]]);
 let currentStep = 0;
 let sequence = false;
 
+function filmAsset(clip, extension) {
+  return 'assets/film/' + clip + '.' + extension + '?v=jeu2';
+}
+
 function labels() {
   coverButton.textContent = cover.paused ? 'Lire la scène' : 'Mettre en pause';
   clipButton.textContent = route.ended ? 'Revoir le plan' : route.paused ? 'Lire le plan' : 'Pause';
@@ -58,7 +62,7 @@ function sync(video) {
     return;
   }
   if (!video.getAttribute('src')) {
-    video.src = video === cover ? 'assets/film/cover.mp4' : 'assets/film/' + clips[currentStep][0] + '.mp4';
+    video.src = filmAsset(video === cover ? 'cover' : clips[currentStep][0], 'mp4');
   }
   const source = video.src;
   video.play().catch(error => {
@@ -80,7 +84,7 @@ function showStep(index) {
   stepsButtons.forEach((button, i) => button.setAttribute('aria-pressed', String(i === index)));
   route.pause();
   route.removeAttribute('src');
-  route.poster = 'assets/film/' + clips[index][0] + '.webp';
+  route.poster = filmAsset(clips[index][0], 'webp');
   route.setAttribute('aria-label', clips[index][1]);
   route.load();
   wanted.set(route, sequence || !motion.matches);

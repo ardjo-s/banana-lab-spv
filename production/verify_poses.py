@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 import bpy
+from mathutils.bvhtree import BVHTree
 
 arguments = sys.argv[sys.argv.index("--") + 1 :]
 work = Path(arguments[0]).resolve()
@@ -35,6 +36,88 @@ def hand_distance(actor, prop):
     )
 
 
+def hand_pads(actor, side):
+    hand = sorted(gloves(actor), key=lambda g: g.name)[side]
+    pads = [
+        child for child in hand.children if child.name.startswith("Contact du doigt")
+    ]
+    assert len(pads) == 3
+    return pads
+
+
+def peel_clearance(bunch):
+    vertices, faces = [], []
+    for fruit in bunch.children:
+        offset = len(vertices)
+        vertices.extend(fruit.matrix_basis @ v.co for v in fruit.data.vertices)
+        faces.extend(tuple(offset + i for i in f.vertices) for f in fruit.data.polygons)
+    peel = BVHTree.FromPolygons(vertices, faces)
+
+    def gaps(pads):
+        inverse = bunch.matrix_world.inverted()
+        result = []
+        for pad in pads:
+            centre = inverse @ pad.matrix_world.translation
+            point, normal, _, _ = peel.find_nearest(centre)
+            result.append((centre - point).dot(normal))
+        return result
+
+    return gaps
+
+
+def grasp(values):
+    # The locator is at the centre of each rounded pad, outside and within
+    # approximately one pad radius of the actual peel.
+    assert all(0.008 < gap < 0.043 for gap in values), values
+
+
+def check_transfer(scene, bunch, gaps):
+    assert scene.frame_end == 132
+    assert {m.frame for m in scene.timeline_markers if m.camera} == {1, 45, 70, 94}
+    giver = hand_pads("Kevin", 1)
+    receiver = hand_pads("Bob", 0)
+    scene.frame_set(1)
+    start = bunch.location.copy()
+    open_pads = [pad.location.copy() for pad in giver]
+    scene.frame_set(18)
+    assert (bunch.location - start).length < 0.001 and max(gaps(giver)) < 0.04
+    assert min(gaps(receiver)) > 0.40
+    assert all(
+        (pad.location - open_pad).length > 0.11
+        for pad, open_pad in zip(giver, open_pads)
+    )
+    eye = next(
+        o
+        for o in bpy.data.objects["Bob"].children_recursive
+        if o.name.startswith("Regard")
+    )
+    scene.frame_set(29)
+    waiting_gaze = eye.location.z
+    scene.frame_set(35)
+    assert waiting_gaze - eye.location.z > 0.055 and min(gaps(receiver)) > 0.45
+    scene.frame_set(62)
+    grasp(gaps(giver + receiver))
+    scene.frame_set(67)
+    z = bunch.location.z
+    torso = bpy.data.objects["Bob · bassin"]
+    hips = torso.location.z
+    scene.frame_set(76)
+    assert z - bunch.location.z > 0.14 and hips - torso.location.z > 0.21
+    assert min(gaps(giver)) > 0.08 and max(gaps(receiver)) < 0.042
+    assert (
+        next(
+            o
+            for o in bpy.data.objects["Bob"].children_recursive
+            if o.name.startswith("Bouche articulée")
+        )
+        .data.shape_keys.key_blocks["Surprise"]
+        .value
+        > 0.7
+    )
+    scene.frame_set(86)
+    assert bunch.location.z > z - 0.11 and max(gaps(receiver)) < 0.042
+
+
 for name in arguments[1:] or ("cover", "depart", "achat", "marche", "vente"):
     bpy.ops.wm.open_mainfile(filepath=str(work / (name + ".blend")))
     scene = bpy.context.scene
@@ -56,16 +139,12 @@ for name in arguments[1:] or ("cover", "depart", "achat", "marche", "vente"):
         assert prop.matrix_world.translation.x - start.x > 2
     else:
         prop = animated_prop("Régime · poignée")
+        gaps = peel_clearance(prop)
         if name == "cover":
-            assert {m.frame for m in scene.timeline_markers if m.camera} == {1, 37, 63}
-            scene.frame_set(52)
-            assert (
-                hand_distance("Bob", prop) < 0.37
-                and hand_distance("Kevin", prop) < 0.38
-            )
+            check_transfer(scene, prop, gaps)
         elif name == "depart":
             scene.frame_set(38)
-            assert hand_distance("Kevin", prop) < 0.38
+            grasp(gaps(hand_pads("Kevin", 0) + hand_pads("Kevin", 1)))
             scene.frame_set(76)
             bins = [
                 o
@@ -79,12 +158,12 @@ for name in arguments[1:] or ("cover", "depart", "achat", "marche", "vente"):
             ), local
         elif name == "marche":
             scene.frame_set(38)
-            assert hand_distance("Bob", prop) < 0.38
+            grasp(gaps(hand_pads("Bob", 0) + hand_pads("Bob", 1)))
             scene.frame_set(76)
             assert abs(prop.matrix_world.translation.z - 0.94) < 0.03
         else:
             scene.frame_set(37)
-            assert max(hand_distance("Bob", prop), hand_distance("Client", prop)) < 0.33
+            grasp(gaps(hand_pads("Bob", 1) + hand_pads("Client", 0)))
             money = animated_prop("Pièce payée")
             scene.frame_set(1)
             start = money.matrix_world.translation.copy()
