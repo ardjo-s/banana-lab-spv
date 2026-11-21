@@ -55,7 +55,7 @@ sc.render.resolution_percentage = args.scale
 sc.render.fps = 24
 sc.render.use_motion_blur = True
 sc.render.motion_blur_shutter = 0.32
-sc.frame_end = 132 if args.shot == "cover" else 76
+sc.frame_end = 146 if args.shot == "cover" else 76
 sc.view_settings.view_transform = "AgX"
 sc.view_settings.look = "AgX - Medium High Contrast"
 sc.world = bpy.data.worlds.new("Lumière ambiante du plateau")
@@ -1273,8 +1273,8 @@ if cover:
     for frame, camera, name in [
         (1, cam, "La levée"),
         (45, insert_cam, "Le passage de main"),
-        (70, reaction_cam, "La réception"),
-        (94, cam, "La dépose"),
+        (83, reaction_cam, "La réception"),
+        (109, cam, "La dépose"),
     ]:
         sc.timeline_markers.new(name, frame=frame).camera = camera
 
@@ -1307,8 +1307,8 @@ def handoff_take(frame):
     support = beat(62, 71)
     catch = beat(69, 76)
     recover = beat(76, 86)
-    lower = beat(91, 112)
-    touchdown = beat(112, 116)
+    lower = beat(105, 126)
+    touchdown = beat(126, 130)
     p = V(
         (
             -0.97 + 0.24 * lift + 0.94 * offer - 0.09 * catch + 0.71 * lower,
@@ -1343,9 +1343,14 @@ def handoff_take(frame):
     kx = -0.86 + 0.21 * offer - 0.08 * beat(76, 88)
     bx = 0.92 - 0.15 * beat(43, 61) + 0.24 * beat(65, 79) - 0.09 * lower
     kclose = (beat(5, 13) * (1 - beat(56, 64)), beat(8, 17) * (1 - beat(70, 78)))
-    bclose = (beat(51, 61) * (1 - beat(115, 122)), beat(57, 67) * (1 - beat(117, 124)))
+    # The near palm catches the bunch first; the fingers cinch as its weight arrives.
+    purchase = 0.66 + 0.34 * beat(69, 77)
+    bclose = (
+        purchase * beat(51, 61) * (1 - beat(129, 136)),
+        beat(57, 67) * (1 - beat(131, 138)),
+    )
     ka = (beat(0, 9) * (1 - beat(62, 73)), beat(0, 11) * (1 - beat(76, 88)))
-    ba = (beat(39, 54) * (1 - beat(121, 130)), beat(45, 60) * (1 - beat(123, 132)))
+    ba = (beat(39, 54) * (1 - beat(135, 144)), beat(45, 60) * (1 - beat(137, 146)))
     kh = [
         reach(
             (kx + side * 0.60, -0.36, 0.79),
@@ -1366,13 +1371,11 @@ def handoff_take(frame):
     freed = sin(pi * beat(72, 87))
     kload = beat(12, 27) * (1 - support)
     # Kevin checks Bob's face before he commits the weight, then watches the grip.
-    klook = mix(
-        p, (bx, -0.27, 1.44), beat(36, 40) * (1 - beat(52, 55)) + beat(102, 108)
-    )
+    klook = mix(p, (bx, -0.27, 1.44), beat(36, 40) * (1 - beat(52, 55)) + beat(84, 89))
     lead.pose(
         frame,
         (kx, 0.115, 0),
-        0.12 + 0.55 * beat(36, 51) - 0.18 * beat(89, 108),
+        0.12 + 0.55 * beat(36, 51) - 0.18 * beat(89, 122),
         0.16 + 0.65 * anticipation + 0.22 * kload - 0.22 * freed,
         kh,
         0,
@@ -1381,36 +1384,45 @@ def handoff_take(frame):
         grips=kclose,
         focus=klook,
         effort=0.07 + 0.77 * kload + 0.10 * anticipation,
-        relief=0.78 * beat(80, 97),
+        relief=0.78 * beat(80, 111),
         compression=0.14 * anticipation + 0.046 * kload - 0.035 * freed,
         load=kload,
         surface=fruit_surface,
         rear_hand=-1,
     )
     # Bob looks at the landing spot a beat before his hands go under it.
-    blook = mix((kx, -0.32, 1.87), p, beat(30, 34) * (1 - beat(115, 119)))
-    bload = support * (1 - beat(109, 116))
+    # Eyes lead the chin after recovery. Hold the eyeline before looking at the crate.
+    check_kevin = beat(90, 94) * (1 - beat(102, 106))
+    head_turn = beat(93, 99) * (1 - beat(104, 111))
+    watch_fruit = beat(30, 34) * (1 - check_kevin) * (1 - beat(129, 133))
+    blook = mix((kx, -0.32, 1.97), p, watch_fruit)
+    bload = support * (1 - beat(123, 130))
     alarm = beat(66, 70) * (1 - beat(79, 87))
-    dip = 0.235 * catch - 0.183 * recover + 0.095 * lower - 0.146 * beat(114, 125)
+    dip = 0.235 * catch - 0.183 * recover + 0.095 * lower - 0.146 * beat(128, 139)
     partner.pose(
         frame,
         (bx, 0.08, 0.12),
-        -0.50 - 0.13 * beat(37, 54) + 0.48 * beat(66, 77) - 0.08 * lower,
+        -0.50
+        - 0.13 * beat(37, 54)
+        + 0.48 * beat(66, 77)
+        - 0.19 * head_turn
+        - 0.08 * lower,
         0.10
         + 0.19 * offer
         - 0.60 * catch
         + 0.57 * recover
+        - 0.18 * head_turn
         + 0.20 * lower
-        - 0.46 * beat(114, 126),
+        - 0.46 * beat(128, 140),
         bh,
         0,
-        pulse(frame, 24, 3) + pulse(frame, 104, 2.7),
+        pulse(frame, 24, 3) + pulse(frame, 118, 2.7),
         -0.035 * offer + 0.131 * catch - 0.084 * recover,
         grips=bclose,
         focus=blook,
         effort=0.12 + 0.48 * bload * (1 - alarm),
         surprise=0.86 * alarm,
-        relief=0.74 * beat(114, 126),
+        relief=0.44 * head_turn + 0.74 * beat(128, 140),
         compression=dip - 0.075 * beat(42, 55) * (1 - catch),
         load=bload,
         surface=fruit_surface,
@@ -1608,8 +1620,11 @@ def animation(frame):
         key(prop, "location", frame)
         key(prop, "rotation_euler", frame)
     if cover:
-        target = prop.location + V((0.03, 0.03, 0.235))
-        insert_cam.location = V((0.03 + 0.22 * t, -3.68, 1.74 + 0.07 * arc))
+        # Let the bunch dip in the frame so the viewer sees the weight shift.
+        settle = ease((frame - 60) / 9)
+        target = prop.location + V((0.07, -0.07, 0.14))
+        target.z += (1.18 - target.z) * settle
+        insert_cam.location = V((0.03 + 0.22 * t, -3.06, 1.64 + 0.07 * arc))
         orient(insert_cam, target)
         insert_data.dof.focus_distance = (target - insert_cam.location).length
         key(insert_cam, "location", frame)

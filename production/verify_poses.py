@@ -72,8 +72,8 @@ def grasp(values):
 
 
 def check_transfer(scene, bunch, gaps):
-    assert scene.frame_end == 132
-    assert {m.frame for m in scene.timeline_markers if m.camera} == {1, 45, 70, 94}
+    assert scene.frame_end == 146
+    assert {m.frame for m in scene.timeline_markers if m.camera} == {1, 45, 83, 109}
     giver = hand_pads("Kevin", 1)
     receiver = hand_pads("Bob", 0)
     scene.frame_set(1)
@@ -97,11 +97,20 @@ def check_transfer(scene, bunch, gaps):
     assert waiting_gaze - eye.location.z > 0.055 and min(gaps(receiver)) > 0.45
     scene.frame_set(62)
     grasp(gaps(giver + receiver))
-    scene.frame_set(67)
+    scene.frame_set(69)
+    first_hold = [pad.location.copy() for pad in receiver]
     z = bunch.location.z
     torso = bpy.data.objects["Bob · bassin"]
     hips = torso.location.z
+    # The insert must show the loaded fingers changing purchase, not just the
+    # arm following the falling fruit. Measure in the glove's own coordinates.
+    for frame in (69, 72, 76, 81):
+        scene.frame_set(frame)
+        assert scene.camera.name.startswith("Contrechamp")
+        grasp(gaps(receiver))
     scene.frame_set(76)
+    assert (receiver[0].location - first_hold[0]).length > 0.035
+    assert (receiver[1].location - first_hold[1]).length > 0.035
     assert z - bunch.location.z > 0.14 and hips - torso.location.z > 0.21
     assert min(gaps(giver)) > 0.08 and max(gaps(receiver)) < 0.042
     assert (
@@ -116,6 +125,16 @@ def check_transfer(scene, bunch, gaps):
     )
     scene.frame_set(86)
     assert bunch.location.z > z - 0.11 and max(gaps(receiver)) < 0.042
+    level = bunch.location.copy()
+    gaze_down = eye.location.z
+    for frame in (89, 95, 101):
+        scene.frame_set(frame)
+        assert scene.camera.name.startswith("Caméra · le poids")
+        assert (bunch.location - level).length < 0.002
+        if frame == 89:
+            assert abs(eye.location.z - gaze_down) < 0.005
+        else:
+            assert eye.location.z - gaze_down > 0.06 and eye.location.x < -0.05
 
 
 for name in arguments[1:] or ("cover", "depart", "achat", "marche", "vente"):

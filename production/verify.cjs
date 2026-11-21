@@ -25,6 +25,8 @@ async function checkViewport(browser, width) {
   await page.goto(url);
   await waitForPlayback(page, '#cover-film');
   const cover = page.locator('#cover-film');
+  const duration = await cover.evaluate(video => video.duration);
+  assert(Math.abs(duration - 146 / 24) < 1 / 24, 'La couverture doit lire le nouveau montage de 146 images');
   await page.locator('.hero-motion').click();
   const stopped = await cover.evaluate(video => video.currentTime);
   await page.waitForTimeout(200);

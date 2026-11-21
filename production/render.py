@@ -19,7 +19,7 @@ args = cli.parse_intermixed_args()
 root = Path(__file__).resolve().parents[1]
 out = root / "assets" / "film"
 out.mkdir(parents=True, exist_ok=True)
-takes = {"cover": 132, "depart": 76, "achat": 76, "marche": 76, "vente": 76}
+takes = {"cover": 146, "depart": 76, "achat": 76, "marche": 76, "vente": 76}
 
 
 def finished_png(path):
