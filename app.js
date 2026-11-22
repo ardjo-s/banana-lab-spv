@@ -44,7 +44,7 @@ let currentStep = 0;
 let sequence = false;
 
 function filmAsset(clip, extension) {
-  return 'assets/film/' + clip + '.' + extension + (clip === 'cover' ? '?v=bras5' : '?v=jeu2');
+  return 'assets/film/' + clip + '.' + extension + '?v=bras5';
 }
 
 function labels() {
