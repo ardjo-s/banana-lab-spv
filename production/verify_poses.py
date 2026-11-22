@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 import bpy
+from bpy_extras.object_utils import world_to_camera_view
 from mathutils.bvhtree import BVHTree
 
 arguments = sys.argv[sys.argv.index("--") + 1 :]
@@ -72,8 +73,8 @@ def grasp(values):
 
 
 def check_transfer(scene, bunch, gaps):
-    assert scene.frame_end == 146
-    assert {m.frame for m in scene.timeline_markers if m.camera} == {1, 45, 83, 109}
+    assert scene.frame_end == 182
+    assert {m.frame for m in scene.timeline_markers if m.camera} == {1, 45, 83, 145}
     giver = hand_pads("Kevin", 1)
     receiver = hand_pads("Bob", 0)
     scene.frame_set(1)
@@ -127,14 +128,35 @@ def check_transfer(scene, bunch, gaps):
     assert bunch.location.z > z - 0.11 and max(gaps(receiver)) < 0.042
     level = bunch.location.copy()
     gaze_down = eye.location.z
-    for frame in (89, 95, 101):
+    kevin_eye = next(
+        o
+        for o in bpy.data.objects["Kevin"].children_recursive
+        if o.name.startswith("Regard")
+    )
+    pivot = bpy.data.objects["Bob · signe de tête"]
+    for frame in (91, 99, 108, 114, 122, 133, 138):
         scene.frame_set(frame)
-        assert scene.camera.name.startswith("Caméra · le poids")
+        assert scene.camera.name.startswith("Caméra · les deux visages")
         assert (bunch.location - level).length < 0.002
-        if frame == 89:
-            assert abs(eye.location.z - gaze_down) < 0.005
+        grasp(gaps(receiver))
+        assert kevin_eye.location.x > 0.055
+        if frame < 101:
+            assert abs(eye.location.z - gaze_down) < 0.006
         else:
             assert eye.location.z - gaze_down > 0.06 and eye.location.x < -0.05
+        if frame == 122:
+            assert 0.18 < pivot.rotation_euler.x < 0.20
+        else:
+            assert abs(pivot.rotation_euler.x) < 0.001
+        for actor in ("Bob", "Kevin"):
+            for gaze in bpy.data.objects[actor].children_recursive:
+                if gaze.name.startswith("Regard"):
+                    pos = world_to_camera_view(
+                        scene, scene.camera, gaze.matrix_world.translation
+                    )
+                    assert 0.07 < pos.x < 0.93 and 0.12 < pos.y < 0.88
+    scene.frame_set(164)
+    assert bunch.location.z < level.z - 0.30
 
 
 for name in arguments[1:] or ("cover", "depart", "achat", "marche", "vente"):

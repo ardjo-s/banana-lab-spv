@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
 
 CLI = argparse.ArgumentParser()
@@ -55,7 +55,7 @@ sc.render.resolution_percentage = args.scale
 sc.render.fps = 24
 sc.render.use_motion_blur = True
 sc.render.motion_blur_shutter = 0.32
-sc.frame_end = 146 if args.shot == "cover" else 76
+sc.frame_end = 182 if args.shot == "cover" else 76
 sc.view_settings.view_transform = "AgX"
 sc.view_settings.look = "AgX - Medium High Contrast"
 sc.world = bpy.data.worlds.new("Lumière ambiante du plateau")
@@ -779,6 +779,20 @@ class Actor:
         )
         badge.rotation_euler.y = pi / 4
         label("G", (0, badge_loc[1] - 0.011, badge_loc[2] - 0.031), 0.078, denim, body)
+        face_parent = body
+        self.nod_pivot = None
+        if name == "Bob" and args.shot == "cover":
+            # The upper capsule bends above the bib. Glasses and lips follow
+            # the same pivot while the wrists keep their grip in world space.
+            self.nod_pivot = face_parent = linked("Bob · signe de tête", parent=body)
+            self.neck = V((0, 0, 0.73))
+            self.nod_angle = math.radians(11)
+            rotation = Matrix.Rotation(self.nod_angle, 3, "X")
+            self.nod_shape = head.shape_key_add(name="Inclinaison du front")
+            for vertex in self.nod_shape.data:
+                pos = vertex.co.copy()
+                weight = ease((pos.z - 0.61) / 0.30)
+                vertex.co = pos.lerp(self.neck + rotation @ (pos - self.neck), weight)
         shell(
             "Élastique tissé",
             [
@@ -788,13 +802,15 @@ class Actor:
                 (eye_z + 0.077, radius + 0.012),
             ],
             strap,
-            body,
+            face_parent,
         )
         self.eyes = []
         for n in range(eyes):
             x = 0 if eyes == 1 else (n - 0.5) * 0.49
             r = 0.311 if eyes == 1 else 0.239
-            eye = linked("Lunette gauche" if n == 0 else "Lunette droite", parent=body)
+            eye = linked(
+                "Lunette gauche" if n == 0 else "Lunette droite", parent=face_parent
+            )
             eye.location = (
                 x,
                 -0.89 * radius * math.sqrt(1 - (x / radius) ** 2) + 0.023,
@@ -910,7 +926,7 @@ class Actor:
             lower.scale.z = -1
             self.eyes.append((eye, gaze, lid, lower, r))
         self.mouth_shapes = make_mouth(
-            body, radius_at, eye_z - (0.47 if eyes == 1 else 0.38)
+            face_parent, radius_at, eye_z - (0.47 if eyes == 1 else 0.38)
         )
         if name != "Bob":
             for j in range(21 if name == "Stuart" else 13):
@@ -971,6 +987,7 @@ class Actor:
         surface=None,
         fruit_hands=(-1, 1),
         rear_hand=0,
+        nod=0,
     ):
         self.root.location = position
         self.root.rotation_euler.z = yaw
@@ -1028,8 +1045,18 @@ class Actor:
                 surface if s in fruit_hands else None,
                 back,
             )
+        face_matrix = parent_matrix
+        if self.nod_pivot:
+            pivot = self.nod_pivot
+            pivot.rotation_euler.x = nod * self.nod_angle
+            pivot.location = self.neck - pivot.rotation_euler.to_matrix() @ self.neck
+            self.nod_shape.value = nod
+            key(pivot, "rotation_euler", frame)
+            key(pivot, "location", frame)
+            key(self.nod_shape, "value", frame)
+            face_matrix = parent_matrix @ pivot.matrix_basis
         for i, (eye, gaze, lid, lower, r) in enumerate(self.eyes):
-            target = (parent_matrix @ eye.matrix_basis).inverted() @ V(focus)
+            target = (face_matrix @ eye.matrix_basis).inverted() @ V(focus)
             horizontal = math.tanh(1.1 * math.atan2(target.x, max(0.12, -target.y)))
             vertical = math.tanh(
                 1.15 * math.atan2(target.z, max(0.20, math.hypot(target.x, target.y)))
@@ -1269,12 +1296,12 @@ if cover:
     reaction_data = camdata.copy()
     reaction_data.lens = 47
     reaction_data.dof.aperture_fstop = 3.0
-    reaction_cam = linked("Caméra · le poids sur Bob", reaction_data)
+    reaction_cam = linked("Caméra · les deux visages", reaction_data)
     for frame, camera, name in [
         (1, cam, "La levée"),
         (45, insert_cam, "Le passage de main"),
         (83, reaction_cam, "La réception"),
-        (109, cam, "La dépose"),
+        (145, cam, "La dépose"),
     ]:
         sc.timeline_markers.new(name, frame=frame).camera = camera
 
@@ -1307,8 +1334,8 @@ def handoff_take(frame):
     support = beat(62, 71)
     catch = beat(69, 76)
     recover = beat(76, 86)
-    lower = beat(105, 126)
-    touchdown = beat(126, 130)
+    lower = beat(141, 162)
+    touchdown = beat(162, 166)
     p = V(
         (
             -0.97 + 0.24 * lift + 0.94 * offer - 0.09 * catch + 0.71 * lower,
@@ -1346,11 +1373,11 @@ def handoff_take(frame):
     # The near palm catches the bunch first; the fingers cinch as its weight arrives.
     purchase = 0.66 + 0.34 * beat(69, 77)
     bclose = (
-        purchase * beat(51, 61) * (1 - beat(129, 136)),
-        beat(57, 67) * (1 - beat(131, 138)),
+        purchase * beat(51, 61) * (1 - beat(165, 172)),
+        beat(57, 67) * (1 - beat(167, 174)),
     )
     ka = (beat(0, 9) * (1 - beat(62, 73)), beat(0, 11) * (1 - beat(76, 88)))
-    ba = (beat(39, 54) * (1 - beat(135, 144)), beat(45, 60) * (1 - beat(137, 146)))
+    ba = (beat(39, 54) * (1 - beat(171, 180)), beat(45, 60) * (1 - beat(173, 182)))
     kh = [
         reach(
             (kx + side * 0.60, -0.36, 0.79),
@@ -1375,16 +1402,16 @@ def handoff_take(frame):
     lead.pose(
         frame,
         (kx, 0.115, 0),
-        0.12 + 0.55 * beat(36, 51) - 0.18 * beat(89, 122),
+        0.12 + 0.55 * beat(36, 51) - 0.18 * beat(89, 158),
         0.16 + 0.65 * anticipation + 0.22 * kload - 0.22 * freed,
         kh,
         0,
-        pulse(frame, 33, 2.5) + pulse(frame, 99, 3),
+        pulse(frame, 33, 2.5) + pulse(frame, 141, 3),
         -0.08 * kload + 0.08 * freed,
         grips=kclose,
         focus=klook,
         effort=0.07 + 0.77 * kload + 0.10 * anticipation,
-        relief=0.78 * beat(80, 111),
+        relief=0.78 * beat(80, 147),
         compression=0.14 * anticipation + 0.046 * kload - 0.035 * freed,
         load=kload,
         surface=fruit_surface,
@@ -1392,13 +1419,13 @@ def handoff_take(frame):
     )
     # Bob looks at the landing spot a beat before his hands go under it.
     # Eyes lead the chin after recovery. Hold the eyeline before looking at the crate.
-    check_kevin = beat(90, 94) * (1 - beat(102, 106))
-    head_turn = beat(93, 99) * (1 - beat(104, 111))
-    watch_fruit = beat(30, 34) * (1 - check_kevin) * (1 - beat(129, 133))
+    check_kevin = beat(101, 106) * (1 - beat(138, 142))
+    head_turn = beat(104, 111) * (1 - beat(140, 147))
+    watch_fruit = beat(30, 34) * (1 - check_kevin) * (1 - beat(165, 169))
     blook = mix((kx, -0.32, 1.97), p, watch_fruit)
-    bload = support * (1 - beat(123, 130))
+    bload = support * (1 - beat(159, 166))
     alarm = beat(66, 70) * (1 - beat(79, 87))
-    dip = 0.235 * catch - 0.183 * recover + 0.095 * lower - 0.146 * beat(128, 139)
+    dip = 0.235 * catch - 0.183 * recover + 0.095 * lower - 0.146 * beat(164, 175)
     partner.pose(
         frame,
         (bx, 0.08, 0.12),
@@ -1413,16 +1440,17 @@ def handoff_take(frame):
         + 0.57 * recover
         - 0.18 * head_turn
         + 0.20 * lower
-        - 0.46 * beat(128, 140),
+        - 0.46 * beat(164, 176),
         bh,
         0,
-        pulse(frame, 24, 3) + pulse(frame, 118, 2.7),
+        pulse(frame, 24, 3) + pulse(frame, 154, 2.7),
         -0.035 * offer + 0.131 * catch - 0.084 * recover,
+        nod=beat(114, 121) * (1 - beat(123, 133)),
         grips=bclose,
         focus=blook,
         effort=0.12 + 0.48 * bload * (1 - alarm),
         surprise=0.86 * alarm,
-        relief=0.44 * head_turn + 0.74 * beat(128, 140),
+        relief=0.44 * head_turn + 0.74 * beat(164, 176),
         compression=dip - 0.075 * beat(42, 55) * (1 - catch),
         load=bload,
         surface=fruit_surface,
@@ -1438,6 +1466,9 @@ def animation(frame):
     blink = lambda c: pulse(t, c, 0.035)
     arc = sin(pi * t)
     if cover:
+        # Preserve the camera move of the original hand insert.
+        t = min((frame - 1) / 145, 1)
+        arc = sin(pi * t)
         focus, camera = handoff_take(frame)
     elif shot == "depart":
         up = ease(t / 0.32)
@@ -1630,13 +1661,9 @@ def animation(frame):
         key(insert_cam, "location", frame)
         key(insert_cam, "rotation_euler", frame)
         insert_data.keyframe_insert(data_path="dof.focus_distance", frame=frame)
-        # Stay on the same side of the exchange. This angle separates Bob's face
-        # from the fruit and keeps both his eyes and the loaded wrists in shot.
-        body_z = partner.body.location.z
-        reaction_target = V(
-            (partner.root.location.x - 0.20, -0.16, 1.17 + 0.44 * body_z)
-        )
-        reaction_cam.location = V((0.36, -3.51, 1.88 + 0.23 * body_z))
+        # One locked two-shot keeps the waiting eyes and the answer visible.
+        reaction_target = V((0.09, -0.23, 1.61))
+        reaction_cam.location = V((0.20, -4.58, 1.85))
         orient(reaction_cam, reaction_target)
         reaction_data.dof.focus_distance = (
             reaction_target - reaction_cam.location
