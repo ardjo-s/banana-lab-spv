@@ -1,11 +1,14 @@
 """Inspect the five saved Blender projects with: blender -b -P verify_poses.py -- WORK."""
 
+import math
 import sys
+from itertools import pairwise
 from pathlib import Path
 
 import bpy
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils.bvhtree import BVHTree
+from mathutils.geometry import interpolate_bezier
 
 arguments = sys.argv[sys.argv.index("--") + 1 :]
 work = Path(arguments[0]).resolve()
@@ -159,9 +162,44 @@ def check_transfer(scene, bunch, gaps):
     assert bunch.location.z < level.z - 0.30
 
 
+def check_arms(scene):
+    dimensions = {
+        "Bob": (0.58, 1.82),
+        "Kevin": (0.57, 2.49),
+        "Stuart": (0.59, 2.06),
+        "Client": (0.56, 2.13),
+    }
+    arms = [obj for obj in scene.objects if obj.name.startswith("Bras articulé")]
+    assert arms
+    for frame in range(1, scene.frame_end + 1):
+        scene.frame_set(frame)
+        for arm in arms:
+            body = arm.parent
+            radius, height = dimensions[body.parent.name]
+            points = arm.data.splines[0].bezier_points
+            wrist = arm.matrix_world @ points[-1].co
+            cuffs = [
+                o for o in body.children_recursive if o.name.startswith("Manchette")
+            ]
+            assert (
+                min((wrist - c.matrix_world.translation).length for c in cuffs) < 0.006
+            )
+            for left, right in pairwise(points[3:10]):
+                for pos in interpolate_bezier(
+                    left.co, left.handle_right, right.handle_left, right.co, 4
+                ):
+                    dz = max(0, 0.28 + radius - pos.z, pos.z - (height - radius))
+                    skin = math.sqrt(max(0, radius**2 - dz**2))
+                    assert math.hypot(pos.x, pos.y / 0.89) - skin > 0.074, (
+                        frame,
+                        arm.name,
+                    )
+
+
 for name in arguments[1:] or ("cover", "depart", "achat", "marche", "vente"):
     bpy.ops.wm.open_mainfile(filepath=str(work / (name + ".blend")))
     scene = bpy.context.scene
+    check_arms(scene)
     assert scene.render.engine == "CYCLES" and scene.render.fps == 24
     assert all(image.packed_file for image in bpy.data.images if image.source == "FILE")
     if name == "achat":

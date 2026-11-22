@@ -500,7 +500,7 @@ class Glove:
     def __init__(self, parent, side):
         self.root = linked("Main gantée", parent=parent)
         self.side = side
-        sphere(
+        self.cuff = sphere(
             "Manchette",
             (0, 0.064, -0.014),
             (0.098, 0.067, 0.071),
@@ -670,6 +670,8 @@ class Actor:
                     max(0.0001, 1 - ((z - top + radius) / radius) ** 2)
                 )
             return radius
+
+        self.radius_at = radius_at
 
         def surface(a, z, lift=0.012):
             r = radius_at(z) + lift
@@ -952,11 +954,13 @@ class Actor:
         for side in [-1, 1]:
             arm = tube(
                 "Bras articulé",
-                [(0, 0, 0), (0.1, 0, 0.1), (0.2, 0, 0.2)],
+                [(0, 0, 0)] * 13,
                 0.079,
                 skin,
                 body,
             )
+            for joint in arm.data.splines[0].bezier_points:
+                joint.handle_left_type = joint.handle_right_type = "FREE"
             glove = Glove(body, side)
             self.arms.append((side, arm, glove))
             foot = linked("Jambe", parent=self.root)
@@ -1018,12 +1022,6 @@ class Actor:
                 )
             )
             wrist = rest if target is None else inv @ V(target)
-            bend = start.lerp(wrist, 0.49) + V(
-                (s * (0.12 + 0.06 * load), 0.07, -0.13 - 0.13 * load)
-            )
-            for bp, co in zip(arm.data.splines[0].bezier_points, [start, bend, wrist]):
-                bp.co = co
-                bp.keyframe_insert(data_path="co", frame=frame)
             glove.location = wrist
             # The palm scoops up under the fruit and rolls outward on release.
             glove.rotation_euler = (
@@ -1037,6 +1035,36 @@ class Actor:
             if back:
                 glove.rotation_euler.z += pi * squeeze
                 key(glove, "rotation_euler", frame)
+            cuff = glove.matrix_basis @ hand.cuff.location
+            elbow = start.lerp(cuff, 0.48) + V(
+                (s * (0.17 + 0.07 * load), -0.10, -0.20 - 0.13 * load)
+            )
+            points = arm.data.splines[0].bezier_points
+            for i, joint in enumerate(points):
+                t = i / (len(points) - 1)
+                pos = (1 - t) ** 2 * start + 2 * t * (1 - t) * elbow + t * t * cuff
+                radial = math.hypot(pos.x, pos.y / 0.89)
+                clearance = self.radius_at(pos.z) + 0.086
+                # The shoulder enters the skin, and the last segment seats inside
+                # the cuff. Between them the full sleeve stays outside the torso.
+                envelope = ease(t / 0.15) * ease((1 - t) / 0.14)
+                if radial < clearance and radial > 1e-6:
+                    scale = 1 + envelope * (clearance / radial - 1)
+                    pos.x *= scale
+                    pos.y *= scale
+                joint.co = pos
+                joint.radius = 1 - 0.31 * t
+                joint.keyframe_insert(data_path="co", frame=frame)
+            # Blender evaluates keyed control points and handles independently.
+            # Bake each tangent in the same pose so the curve follows the elbow.
+            for i, joint in enumerate(points):
+                before = points[max(0, i - 1)].co
+                after = points[min(len(points) - 1, i + 1)].co
+                tangent = (after - before) / 6
+                joint.handle_left = joint.co - tangent
+                joint.handle_right = joint.co + tangent
+                joint.keyframe_insert(data_path="handle_left", frame=frame)
+                joint.keyframe_insert(data_path="handle_right", frame=frame)
             hand.pose(
                 frame,
                 squeeze,
